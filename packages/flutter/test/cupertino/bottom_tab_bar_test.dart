@@ -2,30 +2,42 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../painting/mocks_for_image_cache.dart';
+import '../painting/image_data.dart';
 import '../widgets/semantics_tester.dart';
 
 Future<void> pumpWidgetWithBoilerplate(WidgetTester tester, Widget widget) async {
   await tester.pumpWidget(
-    Directionality(
-      textDirection: TextDirection.ltr,
-      child: widget,
+    Localizations(
+      locale: const Locale('en', 'US'),
+      delegates: const <LocalizationsDelegate<dynamic>>[
+        DefaultWidgetsLocalizations.delegate,
+        DefaultCupertinoLocalizations.delegate,
+      ],
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: widget,
+      ),
     ),
   );
 }
 
-void main() {
+Future<void> main() async {
+
   testWidgets('Need at least 2 tabs', (WidgetTester tester) async {
     try {
       await pumpWidgetWithBoilerplate(tester, CupertinoTabBar(
-        items: const <BottomNavigationBarItem>[
+        items: <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 1'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 1'),
           ),
         ],
       ));
@@ -40,14 +52,14 @@ void main() {
     await pumpWidgetWithBoilerplate(tester, MediaQuery(
       data: const MediaQueryData(),
       child: CupertinoTabBar(
-        items: const <BottomNavigationBarItem>[
+        items: <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 1'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 1'),
           ),
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 2'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 2'),
           ),
         ],
         currentIndex: 1,
@@ -69,6 +81,29 @@ void main() {
     expect(actualActive.text.style.color, const Color(0xFF123456));
   });
 
+
+  testWidgets('BottomNavigationBar.label will create a text widget', (WidgetTester tester) async {
+    await pumpWidgetWithBoilerplate(tester, MediaQuery(
+      data: const MediaQueryData(),
+      child: CupertinoTabBar(
+        items: <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            label: 'Tab 1',
+          ),
+          BottomNavigationBarItem(
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            label: 'Tab 2',
+          ),
+        ],
+        currentIndex: 1,
+      ),
+    ));
+
+    expect(find.text('Tab 1'), findsOneWidget);
+    expect(find.text('Tab 2'), findsOneWidget);
+  });
+
   testWidgets('Active and inactive colors dark mode', (WidgetTester tester) async {
     const CupertinoDynamicColor dynamicActiveColor = CupertinoDynamicColor.withBrightness(
       color: Color(0xFF000000),
@@ -83,14 +118,14 @@ void main() {
     await pumpWidgetWithBoilerplate(tester, MediaQuery(
       data: const MediaQueryData(),
       child: CupertinoTabBar(
-        items: const <BottomNavigationBarItem>[
+        items: <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 1'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 1'),
           ),
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 2'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 2'),
           ),
         ],
         currentIndex: 1,
@@ -117,21 +152,21 @@ void main() {
     ));
 
     // Border color is resolved correctly.
-    final BoxDecoration decoration1 = renderDecoratedBox.decoration;
+    final BoxDecoration decoration1 = renderDecoratedBox.decoration as BoxDecoration;
     expect(decoration1.border.top.color.value, 0x4C000000);
 
     // Switch to dark mode.
     await pumpWidgetWithBoilerplate(tester, MediaQuery(
         data: const MediaQueryData(platformBrightness: Brightness.dark),
         child: CupertinoTabBar(
-          items: const <BottomNavigationBarItem>[
+          items: <BottomNavigationBarItem>[
             BottomNavigationBarItem(
-              icon: ImageIcon(TestImageProvider(24, 24)),
-              title: Text('Tab 1'),
+              icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+              title: const Text('Tab 1'),
             ),
             BottomNavigationBarItem(
-              icon: ImageIcon(TestImageProvider(24, 24)),
-              title: Text('Tab 2'),
+              icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+              title: const Text('Tab 2'),
             ),
           ],
           currentIndex: 1,
@@ -153,7 +188,7 @@ void main() {
     expect(actualActive.text.style.color.value, 0xFF000001);
 
     // Border color is resolved correctly.
-    final BoxDecoration decoration2 = renderDecoratedBox.decoration;
+    final BoxDecoration decoration2 = renderDecoratedBox.decoration as BoxDecoration;
     expect(decoration2.border.top.color.value, 0x29000000);
   });
 
@@ -161,14 +196,14 @@ void main() {
     await tester.pumpWidget(
       CupertinoApp(
         home: CupertinoTabBar(
-          items: const <BottomNavigationBarItem>[
+          items: <BottomNavigationBarItem>[
             BottomNavigationBarItem(
-              icon: ImageIcon(TestImageProvider(24, 24)),
-              title: Text('Tab 1'),
+              icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+              title: const Text('Tab 1'),
             ),
             BottomNavigationBarItem(
-              icon: ImageIcon(TestImageProvider(24, 24)),
-              title: Text('Tab 2'),
+              icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+              title: const Text('Tab 2'),
             ),
           ],
           currentIndex: 1,
@@ -192,14 +227,14 @@ void main() {
       CupertinoApp(
         theme: const CupertinoThemeData(brightness: Brightness.dark),
         home: CupertinoTabBar(
-          items: const <BottomNavigationBarItem>[
+          items: <BottomNavigationBarItem>[
             BottomNavigationBarItem(
-              icon: ImageIcon(TestImageProvider(24, 24)),
-              title: Text('Tab 1'),
+              icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+              title: const Text('Tab 1'),
             ),
             BottomNavigationBarItem(
-              icon: ImageIcon(TestImageProvider(24, 24)),
-              title: Text('Tab 2'),
+              icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+              title: const Text('Tab 2'),
             ),
           ],
           currentIndex: 1,
@@ -222,21 +257,21 @@ void main() {
   });
 
   testWidgets('Use active icon', (WidgetTester tester) async {
-    const TestImageProvider activeIcon = TestImageProvider(16, 16);
-    const TestImageProvider inactiveIcon = TestImageProvider(24, 24);
+    final MemoryImage activeIcon = MemoryImage(Uint8List.fromList(kBlueSquare));
+    final MemoryImage inactiveIcon = MemoryImage(Uint8List.fromList(kTransparentImage));
 
     await pumpWidgetWithBoilerplate(tester, MediaQuery(
       data: const MediaQueryData(),
       child: CupertinoTabBar(
-        items: const <BottomNavigationBarItem>[
+        items: <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 1'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 1'),
           ),
           BottomNavigationBarItem(
             icon: ImageIcon(inactiveIcon),
             activeIcon: ImageIcon(activeIcon),
-            title: Text('Tab 2'),
+            title: const Text('Tab 2'),
           ),
         ],
         currentIndex: 1,
@@ -256,14 +291,14 @@ void main() {
 
   testWidgets('Adjusts height to account for bottom padding', (WidgetTester tester) async {
     final CupertinoTabBar tabBar = CupertinoTabBar(
-      items: const <BottomNavigationBarItem>[
+      items: <BottomNavigationBarItem>[
         BottomNavigationBarItem(
-          icon: ImageIcon(TestImageProvider(24, 24)),
-          title: Text('Aka'),
+          icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+          title: const Text('Aka'),
         ),
         BottomNavigationBarItem(
-          icon: ImageIcon(TestImageProvider(24, 24)),
-          title: Text('Shiro'),
+          icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+          title: const Text('Shiro'),
         ),
       ],
     );
@@ -297,14 +332,14 @@ void main() {
     await pumpWidgetWithBoilerplate(tester, MediaQuery(
       data: const MediaQueryData(),
       child: CupertinoTabBar(
-        items: const <BottomNavigationBarItem>[
+        items: <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 1'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 1'),
           ),
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 2'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 2'),
           ),
         ],
       ),
@@ -315,14 +350,14 @@ void main() {
     await pumpWidgetWithBoilerplate(tester, MediaQuery(
       data: const MediaQueryData(),
       child: CupertinoTabBar(
-        items: const <BottomNavigationBarItem>[
+        items: <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 1'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 1'),
           ),
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 2'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 2'),
           ),
         ],
         backgroundColor: const Color(0xFFFFFFFF), // Opaque white.
@@ -338,14 +373,14 @@ void main() {
     await pumpWidgetWithBoilerplate(tester, MediaQuery(
       data: const MediaQueryData(),
       child: CupertinoTabBar(
-        items: const <BottomNavigationBarItem>[
+        items: <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 1'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 1'),
           ),
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 2'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 2'),
           ),
         ],
         currentIndex: 1,
@@ -363,14 +398,14 @@ void main() {
     await pumpWidgetWithBoilerplate(tester, MediaQuery(
       data: const MediaQueryData(),
       child: CupertinoTabBar(
-        items: const <BottomNavigationBarItem>[
+        items: <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 1'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 1'),
           ),
           BottomNavigationBarItem(
-            icon: ImageIcon(TestImageProvider(24, 24)),
-            title: Text('Tab 2'),
+            icon: ImageIcon(MemoryImage(Uint8List.fromList(kTransparentImage))),
+            title: const Text('Tab 2'),
           ),
         ],
       ),
@@ -378,14 +413,14 @@ void main() {
 
     expect(semantics, includesNodeWith(
       label: 'Tab 1',
-      hint: 'tab, 1 of 2',
+      hint: 'Tab 1 of 2',
       flags: <SemanticsFlag>[SemanticsFlag.isSelected],
       textDirection: TextDirection.ltr,
     ));
 
     expect(semantics, includesNodeWith(
       label: 'Tab 2',
-      hint: 'tab, 2 of 2',
+      hint: 'Tab 2 of 2',
       textDirection: TextDirection.ltr,
     ));
 
@@ -393,7 +428,7 @@ void main() {
   });
 
   testWidgets('Title of items should be nullable', (WidgetTester tester) async {
-    const TestImageProvider iconProvider = TestImageProvider(16, 16);
+    final MemoryImage iconProvider = MemoryImage(Uint8List.fromList(kTransparentImage));
     final List<int> itemsTapped = <int>[];
 
     await pumpWidgetWithBoilerplate(
@@ -401,12 +436,12 @@ void main() {
         MediaQuery(
           data: const MediaQueryData(),
           child: CupertinoTabBar(
-            items: const <BottomNavigationBarItem>[
+            items: <BottomNavigationBarItem>[
               BottomNavigationBarItem(
                 icon: ImageIcon(
-                  TestImageProvider(24, 24),
+                  MemoryImage(Uint8List.fromList(kTransparentImage)),
                 ),
-                title: Text('Tab 1'),
+                title: const Text('Tab 1'),
               ),
               BottomNavigationBarItem(
                 icon: ImageIcon(
@@ -433,25 +468,25 @@ void main() {
         MediaQuery(
           data: const MediaQueryData(),
           child: CupertinoTabBar(
-            items: const <BottomNavigationBarItem>[
+            items: <BottomNavigationBarItem>[
               BottomNavigationBarItem(
                 icon: ImageIcon(
-                  TestImageProvider(24, 24),
+                  MemoryImage(Uint8List.fromList(kTransparentImage)),
                 ),
-                title: Text('Tab 1'),
+                title: const Text('Tab 1'),
               ),
               BottomNavigationBarItem(
                 icon: ImageIcon(
-                  TestImageProvider(24, 24),
+                  MemoryImage(Uint8List.fromList(kTransparentImage)),
                 ),
-                title: Text('Tab 2'),
+                title: const Text('Tab 2'),
               ),
             ],
           ),
         ));
 
     final DecoratedBox decoratedBox = tester.widget(find.byType(DecoratedBox));
-    final BoxDecoration boxDecoration = decoratedBox.decoration;
+    final BoxDecoration boxDecoration = decoratedBox.decoration as BoxDecoration;
     expect(boxDecoration.border, isNotNull);
 
     await pumpWidgetWithBoilerplate(
@@ -459,18 +494,18 @@ void main() {
         MediaQuery(
           data: const MediaQueryData(),
           child: CupertinoTabBar(
-            items: const <BottomNavigationBarItem>[
+            items: <BottomNavigationBarItem>[
               BottomNavigationBarItem(
                 icon: ImageIcon(
-                  TestImageProvider(24, 24),
+                  MemoryImage(Uint8List.fromList(kTransparentImage)),
                 ),
-                title: Text('Tab 1'),
+                title: const Text('Tab 1'),
               ),
               BottomNavigationBarItem(
                 icon: ImageIcon(
-                  TestImageProvider(24, 24),
+                  MemoryImage(Uint8List.fromList(kTransparentImage)),
                 ),
-                title: Text('Tab 2'),
+                title: const Text('Tab 2'),
               ),
             ],
             backgroundColor: const Color(0xFFFFFFFF), // Opaque white.
@@ -481,7 +516,7 @@ void main() {
     final DecoratedBox decoratedBoxHiddenBorder =
         tester.widget(find.byType(DecoratedBox));
     final BoxDecoration boxDecorationHiddenBorder =
-        decoratedBoxHiddenBorder.decoration;
+        decoratedBoxHiddenBorder.decoration as BoxDecoration;
     expect(boxDecorationHiddenBorder.border, isNull);
   });
 }

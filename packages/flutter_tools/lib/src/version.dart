@@ -7,23 +7,72 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 import 'base/common.dart';
-import 'base/context.dart';
 import 'base/file_system.dart';
 import 'base/io.dart';
 import 'base/process.dart';
-import 'base/process_manager.dart';
 import 'base/time.dart';
 import 'cache.dart';
 import 'convert.dart';
-import 'globals.dart';
+import 'globals.dart' as globals;
+
+/// The names of each channel/branch in order of increasing stability.
+enum Channel {
+  master,
+  dev,
+  beta,
+  stable,
+}
+
+/// The flutter GitHub repository.
+String get _flutterGit => globals.platform.environment['FLUTTER_GIT_URL'] ?? 'https://github.com/flutter/flutter.git';
+
+/// Retrieve a human-readable name for a given [channel].
+///
+/// Requires [FlutterVersion.officialChannels] to be correctly ordered.
+String getNameForChannel(Channel channel) {
+  return FlutterVersion.officialChannels.elementAt(channel.index);
+}
+
+/// Retrieve the [Channel] representation for a string [name].
+///
+/// Returns `null` if [name] is not in the list of official channels, according
+/// to [FlutterVersion.officialChannels].
+Channel getChannelForName(String name) {
+  if (FlutterVersion.officialChannels.contains(name)) {
+    return Channel.values[FlutterVersion.officialChannels.toList().indexOf(name)];
+  }
+  return null;
+}
 
 class FlutterVersion {
-  FlutterVersion([this._clock = const SystemClock()]) {
-    _frameworkRevision = _runGit(gitLog(<String>['-n', '1', '--pretty=format:%H']).join(' '));
-    _frameworkVersion = GitTagVersion.determine().frameworkVersionFor(_frameworkRevision);
+  /// Parses the Flutter version from currently available tags in the local
+  /// repo.
+  ///
+  /// Call [fetchTagsAndUpdate] to update the version based on the latest tags
+  /// available upstream.
+  FlutterVersion([this._clock = const SystemClock(), this._workingDirectory]) {
+    _frameworkRevision = _runGit(
+      gitLog(<String>['-n', '1', '--pretty=format:%H']).join(' '),
+      processUtils,
+      _workingDirectory,
+    );
+    _gitTagVersion = GitTagVersion.determine(processUtils, workingDirectory: _workingDirectory, fetchTags: false);
+    _frameworkVersion = gitTagVersion.frameworkVersionFor(_frameworkRevision);
+  }
+
+  /// Fetchs tags from the upstream Flutter repository and re-calculates the
+  /// version.
+  ///
+  /// This carries a performance penalty, and should only be called when the
+  /// user explicitly wants to get the version, e.g. for `flutter --version` or
+  /// `flutter doctor`.
+  void fetchTagsAndUpdate() {
+    _gitTagVersion = GitTagVersion.determine(processUtils, workingDirectory: _workingDirectory, fetchTags: true);
+    _frameworkVersion = gitTagVersion.frameworkVersionFor(_frameworkRevision);
   }
 
   final SystemClock _clock;
+  final String _workingDirectory;
 
   String _repositoryUrl;
   String get repositoryUrl {
@@ -37,6 +86,7 @@ class FlutterVersion {
     return !<String>['dev', 'beta', 'stable'].contains(branchName);
   }
 
+  // Beware: Keep order in accordance with stability
   static const Set<String> officialChannels = <String>{
     'master',
     'dev',
@@ -60,11 +110,19 @@ class FlutterVersion {
   /// `master`, `dev`, `beta`, `stable`; or old ones, like `alpha`, `hackathon`, ...
   String get channel {
     if (_channel == null) {
-      final String channel = _runGit('git rev-parse --abbrev-ref --symbolic @{u}');
+      final String channel = _runGit(
+        'git rev-parse --abbrev-ref --symbolic @{u}',
+        processUtils,
+        _workingDirectory,
+      );
       final int slash = channel.indexOf('/');
       if (slash != -1) {
         final String remote = channel.substring(0, slash);
-        _repositoryUrl = _runGit('git ls-remote --get-url $remote');
+        _repositoryUrl = _runGit(
+          'git ls-remote --get-url $remote',
+          processUtils,
+          _workingDirectory,
+        );
         _channel = channel.substring(slash + 1);
       } else if (channel.isEmpty) {
         _channel = 'unknown';
@@ -74,6 +132,9 @@ class FlutterVersion {
     }
     return _channel;
   }
+
+  GitTagVersion _gitTagVersion;
+  GitTagVersion get gitTagVersion => _gitTagVersion;
 
   /// The name of the local branch.
   /// Use getBranchName() to read this.
@@ -85,7 +146,11 @@ class FlutterVersion {
 
   String _frameworkAge;
   String get frameworkAge {
-    return _frameworkAge ??= _runGit(gitLog(<String>['-n', '1', '--pretty=format:%ar']).join(' '));
+    return _frameworkAge ??= _runGit(
+      gitLog(<String>['-n', '1', '--pretty=format:%ar']).join(' '),
+      processUtils,
+      _workingDirectory,
+    );
   }
 
   String _frameworkVersion;
@@ -93,13 +158,13 @@ class FlutterVersion {
 
   String get frameworkDate => frameworkCommitDate;
 
-  String get dartSdkVersion => Cache.instance.dartSdkVersion;
+  String get dartSdkVersion => globals.cache.dartSdkVersion;
 
-  String get engineRevision => Cache.instance.engineRevision;
+  String get engineRevision => globals.cache.engineRevision;
   String get engineRevisionShort => _shortGitRevision(engineRevision);
 
   Future<void> ensureVersionFile() {
-    fs.file(fs.path.join(Cache.flutterRoot, 'version')).writeAsStringSync(_frameworkVersion);
+    globals.fs.file(globals.fs.path.join(Cache.flutterRoot, 'version')).writeAsStringSync(_frameworkVersion);
     return Future<void>.value();
   }
 
@@ -157,7 +222,7 @@ class FlutterVersion {
     } on VersionCheckError catch (e) {
       if (lenient) {
         final DateTime dummyDate = DateTime.fromMillisecondsSinceEpoch(0);
-        printError('Failed to find the latest git commit date: $e\n'
+        globals.printError('Failed to find the latest git commit date: $e\n'
           'Returning $dummyDate instead.');
         // Return something that DateTime.parse() can parse.
         return dummyDate.toString();
@@ -187,13 +252,20 @@ class FlutterVersion {
         'remote',
         'add',
         _versionCheckRemote,
-        'https://github.com/flutter/flutter.git',
+        _flutterGit,
       ]);
       await _run(<String>['git', 'fetch', _versionCheckRemote, branch]);
       return _latestGitCommitDate(
         branch: '$_versionCheckRemote/$branch',
         lenient: false,
       );
+    } on VersionCheckError catch (error) {
+      if (globals.platform.environment.containsKey('FLUTTER_GIT_URL')) {
+        globals.logger.printError('Warning: the Flutter git upstream was overriden '
+        'by the environment variable FLUTTER_GIT_URL = $_flutterGit');
+      }
+      globals.logger.printError(error.toString());
+      rethrow;
     } finally {
       await _removeVersionCheckRemoteIfExists();
     }
@@ -209,8 +281,6 @@ class FlutterVersion {
     }
   }
 
-  static FlutterVersion get instance => context.get<FlutterVersion>();
-
   /// Return a short string for the version (e.g. `master/0.0.59-pre.92`, `scroll_refactor/a76bc8e22b`).
   String getVersionString({ bool redactUnknownBranches = false }) {
     if (frameworkVersion != 'unknown') {
@@ -225,7 +295,7 @@ class FlutterVersion {
   /// the branch name will be returned as `'[user-branch]'`.
   String getBranchName({ bool redactUnknownBranches = false }) {
     _branch ??= () {
-      final String branch = _runGit('git rev-parse --abbrev-ref HEAD');
+      final String branch = _runGit('git rev-parse --abbrev-ref HEAD', processUtils);
       return branch == 'HEAD' ? channel : branch;
     }();
     if (redactUnknownBranches || _branch.isEmpty) {
@@ -245,7 +315,7 @@ class FlutterVersion {
     String tentativeDescendantRevision,
     String tentativeAncestorRevision,
   }) {
-    final ProcessResult result = processManager.runSync(
+    final ProcessResult result = globals.processManager.runSync(
       <String>[
         'git',
         'merge-base',
@@ -305,7 +375,7 @@ class FlutterVersion {
   /// channel doesn't linger.
   static Future<void> resetFlutterVersionFreshnessCheck() async {
     try {
-      await Cache.instance.getStampFileFor(
+      await globals.cache.getStampFileFor(
         VersionCheckStamp.flutterVersionCheckStampFile,
       ).delete();
     } on FileSystemException {
@@ -364,7 +434,7 @@ class FlutterVersion {
         remoteVersionStatus == VersionCheckResult.newVersionAvailable
           ? newVersionAvailableMessage()
           : versionOutOfDateMessage(frameworkAge);
-      printStatus(updateMessage, emphasis: true);
+      globals.printStatus(updateMessage, emphasis: true);
       await Future.wait<void>(<Future<void>>[
         stamp.store(
           newTimeWarningWasPrinted: _clock.now(),
@@ -444,7 +514,7 @@ class FlutterVersion {
       // This happens when any of the git commands fails, which can happen when
       // there's no Internet connectivity. Remote version check is best effort
       // only. We do not prevent the command from running when it fails.
-      printTrace('Failed to check Flutter version in the remote repository: $error');
+      globals.printTrace('Failed to check Flutter version in the remote repository: $error');
       // Still update the timestamp to avoid us hitting the server on every single
       // command if for some reason we cannot connect (eg. we may be offline).
       await versionCheckStamp.store(
@@ -473,7 +543,7 @@ class VersionCheckStamp {
   static const String flutterVersionCheckStampFile = 'flutter_version_check';
 
   static Future<VersionCheckStamp> load() async {
-    final String versionCheckStamp = Cache.instance.getStampFor(flutterVersionCheckStampFile);
+    final String versionCheckStamp = globals.cache.getStampFor(flutterVersionCheckStampFile);
 
     if (versionCheckStamp != null) {
       // Attempt to parse stamp JSON.
@@ -482,11 +552,11 @@ class VersionCheckStamp {
         if (jsonObject is Map<String, dynamic>) {
           return fromJson(jsonObject);
         } else {
-          printTrace('Warning: expected version stamp to be a Map but found: $jsonObject');
+          globals.printTrace('Warning: expected version stamp to be a Map but found: $jsonObject');
         }
-      } catch (error, stackTrace) {
+      } on Exception catch (error, stackTrace) {
         // Do not crash if JSON is malformed.
-        printTrace('${error.runtimeType}: $error\n$stackTrace');
+        globals.printTrace('${error.runtimeType}: $error\n$stackTrace');
       }
     }
 
@@ -528,7 +598,7 @@ class VersionCheckStamp {
     }
 
     const JsonEncoder prettyJsonEncoder = JsonEncoder.withIndent('  ');
-    Cache.instance.setStampFor(flutterVersionCheckStampFile, prettyJsonEncoder.convert(jsonData));
+    globals.cache.setStampFor(flutterVersionCheckStampFile, prettyJsonEncoder.convert(jsonData));
   }
 
   Map<String, String> toJson({
@@ -578,7 +648,7 @@ class VersionCheckError implements Exception {
 /// If [lenient] is true and the command fails, returns an empty string.
 /// Otherwise, throws a [ToolExit] exception.
 String _runSync(List<String> command, { bool lenient = true }) {
-  final ProcessResult results = processManager.runSync(
+  final ProcessResult results = globals.processManager.runSync(
     command,
     workingDirectory: Cache.flutterRoot,
   );
@@ -598,10 +668,10 @@ String _runSync(List<String> command, { bool lenient = true }) {
   return '';
 }
 
-String _runGit(String command) {
+String _runGit(String command, ProcessUtils processUtils, [String workingDirectory]) {
   return processUtils.runSync(
     command.split(' '),
-    workingDirectory: Cache.flutterRoot,
+    workingDirectory: workingDirectory ?? Cache.flutterRoot,
   ).stdout.trim();
 }
 
@@ -610,7 +680,7 @@ String _runGit(String command) {
 ///
 /// If the command fails, throws a [ToolExit] exception.
 Future<String> _run(List<String> command) async {
-  final ProcessResult results = await processManager.run(command, workingDirectory: Cache.flutterRoot);
+  final ProcessResult results = await globals.processManager.run(command, workingDirectory: Cache.flutterRoot);
 
   if (results.exitCode == 0) {
     return (results.stdout as String).trim();
@@ -629,15 +699,29 @@ String _shortGitRevision(String revision) {
   return revision.length > 10 ? revision.substring(0, 10) : revision;
 }
 
+/// Version of Flutter SDK parsed from Git.
 class GitTagVersion {
-  const GitTagVersion(this.x, this.y, this.z, this.hotfix, this.commits, this.hash);
+  const GitTagVersion({
+    this.x,
+    this.y,
+    this.z,
+    this.hotfix,
+    this.devVersion,
+    this.devPatch,
+    this.commits,
+    this.hash,
+    this.gitTag,
+  });
   const GitTagVersion.unknown()
     : x = null,
       y = null,
       z = null,
       hotfix = null,
       commits = 0,
-      hash = '';
+      devVersion = null,
+      devPatch = null,
+      hash = '',
+      gitTag = '';
 
   /// The X in vX.Y.Z.
   final int x;
@@ -648,7 +732,7 @@ class GitTagVersion {
   /// The Z in vX.Y.Z.
   final int z;
 
-  /// the F in vX.Y.Z+hotfix.F
+  /// the F in vX.Y.Z+hotfix.F.
   final int hotfix;
 
   /// Number of commits since the vX.Y.Z tag.
@@ -657,19 +741,105 @@ class GitTagVersion {
   /// The git hash (or an abbreviation thereof) for this commit.
   final String hash;
 
-  static GitTagVersion determine() {
-    return parse(_runGit('git describe --match v*.*.* --first-parent --long --tags'));
+  /// The N in X.Y.Z-dev.N.M.
+  final int devVersion;
+
+  /// The M in X.Y.Z-dev.N.M.
+  final int devPatch;
+
+  /// The git tag that is this version's closest ancestor.
+  final String gitTag;
+
+  static GitTagVersion determine(ProcessUtils processUtils, {String workingDirectory, bool fetchTags = false}) {
+    if (fetchTags) {
+      final String channel = _runGit('git rev-parse --abbrev-ref HEAD', processUtils, workingDirectory);
+      if (channel == 'dev' || channel == 'beta' || channel == 'stable') {
+        globals.printTrace('Skipping request to fetchTags - on well known channel $channel.');
+      } else {
+        _runGit('git fetch $_flutterGit --tags -f', processUtils, workingDirectory);
+      }
+    }
+    final List<String> tags = _runGit(
+      'git tag --points-at HEAD', processUtils, workingDirectory).trim().split('\n');
+
+    // Check first for a stable tag
+    final RegExp stableTagPattern = RegExp(r'^\d+\.\d+\.\d+$');
+    for (final String tag in tags) {
+      if (stableTagPattern.hasMatch(tag.trim())) {
+        return parse(tag);
+      }
+    }
+    // Next check for a dev tag
+    final RegExp devTagPattern = RegExp(r'^\d+\.\d+\.\d+-\d+\.\d+\.pre$');
+    for (final String tag in tags) {
+      if (devTagPattern.hasMatch(tag.trim())) {
+        return parse(tag);
+      }
+    }
+
+    // If we're not currently on a tag, use git describe to find the most
+    // recent tag and number of commits past.
+    return parse(
+      _runGit(
+        'git describe --match *.*.* --first-parent --long --tags',
+        processUtils,
+        workingDirectory,
+      )
+    );
+  }
+
+  /// Parse a version string.
+  ///
+  /// The version string can either be an exact release tag (e.g. '1.2.3' for
+  /// stable or 1.2.3-4.5.pre for a dev) or the output of `git describe` (e.g.
+  /// for commit abc123 that is 6 commits after tag 1.2.3-4.5.pre, git would
+  /// return '1.2.3-4.5.pre-6-gabc123').
+  static GitTagVersion parseVersion(String version) {
+    final RegExp versionPattern = RegExp(
+      r'^(\d+)\.(\d+)\.(\d+)(-\d+\.\d+\.pre)?(?:-(\d+)-g([a-f0-9]+))?$');
+    final Match match = versionPattern.firstMatch(version.trim());
+    if (match == null) {
+      return const GitTagVersion.unknown();
+    }
+
+    final List<String> matchGroups = match.groups(<int>[1, 2, 3, 4, 5, 6]);
+    final int x = matchGroups[0] == null ? null : int.tryParse(matchGroups[0]);
+    final int y = matchGroups[1] == null ? null : int.tryParse(matchGroups[1]);
+    final int z = matchGroups[2] == null ? null : int.tryParse(matchGroups[2]);
+    final String devString = matchGroups[3];
+    int devVersion, devPatch;
+    if (devString != null) {
+      final Match devMatch = RegExp(r'^-(\d+)\.(\d+)\.pre$')
+        .firstMatch(devString);
+      final List<String> devGroups = devMatch.groups(<int>[1, 2]);
+      devVersion = devGroups[0] == null ? null : int.tryParse(devGroups[0]);
+      devPatch = devGroups[1] == null ? null : int.tryParse(devGroups[1]);
+    }
+    // count of commits past last tagged version
+    final int commits = matchGroups[4] == null ? 0 : int.tryParse(matchGroups[4]);
+    final String hash = matchGroups[5] ?? '';
+
+    return GitTagVersion(
+      x: x,
+      y: y,
+      z: z,
+      devVersion: devVersion,
+      devPatch: devPatch,
+      commits: commits,
+      hash: hash,
+      gitTag: '$x.$y.$z${devString ?? ''}', // e.g. 1.2.3-4.5.pre
+    );
   }
 
   static GitTagVersion parse(String version) {
-    final RegExp versionPattern = RegExp(r'^v([0-9]+)\.([0-9]+)\.([0-9]+)(?:\+hotfix\.([0-9]+))?-([0-9]+)-g([a-f0-9]+)$');
-    final List<String> parts = versionPattern.matchAsPrefix(version)?.groups(<int>[1, 2, 3, 4, 5, 6]);
-    if (parts == null) {
-      printTrace('Could not interpret results of "git describe": $version');
-      return const GitTagVersion.unknown();
+    GitTagVersion gitTagVersion;
+
+    gitTagVersion = parseVersion(version);
+    if (gitTagVersion != const GitTagVersion.unknown()) {
+      return gitTagVersion;
     }
-    final List<int> parsedParts = parts.take(5).map<int>((String source) => source == null ? null : int.tryParse(source)).toList();
-    return GitTagVersion(parsedParts[0], parsedParts[1], parsedParts[2], parsedParts[3], parsedParts[4], parts[5]);
+    globals.printTrace('Could not interpret results of "git describe": $version');
+    return const GitTagVersion.unknown();
   }
 
   String frameworkVersionFor(String revision) {
@@ -677,15 +847,16 @@ class GitTagVersion {
       return '0.0.0-unknown';
     }
     if (commits == 0) {
-      if (hotfix != null) {
-        return '$x.$y.$z+hotfix.$hotfix';
-      }
-      return '$x.$y.$z';
+      return gitTag;
     }
     if (hotfix != null) {
-      return '$x.$y.$z+hotfix.${hotfix + 1}-pre.$commits';
+      // This is an unexpected state where untagged commits exist past a hotfix
+      return '$x.$y.$z+hotfix.${hotfix + 1}.pre.$commits';
     }
-    return '$x.$y.${z + 1}-pre.$commits';
+    if (devPatch != null && devVersion != null) {
+      return '$x.$y.$z-${devVersion + 1}.0.pre.$commits';
+    }
+    return '$x.$y.${z + 1}-0.0.pre.$commits';
   }
 }
 

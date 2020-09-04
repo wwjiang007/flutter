@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/rendering.dart';
@@ -105,6 +107,7 @@ class MergeableMaterial extends StatefulWidget {
     this.elevation = 2,
     this.hasDividers = false,
     this.children = const <MergeableMaterialItem>[],
+    this.dividerColor,
   }) : super(key: key);
 
   /// The children of the [MergeableMaterial].
@@ -115,7 +118,7 @@ class MergeableMaterial extends StatefulWidget {
 
   /// The z-coordinate at which to place all the [Material] slices.
   ///
-  /// The following elevations have defined shadows: 1, 2, 3, 4, 6, 8, 9, 12, 16, 24
+  /// The following elevations have defined shadows: 1, 2, 3, 4, 6, 8, 9, 12, 16, 24.
   ///
   /// Defaults to 2, the appropriate elevation for cards.
   ///
@@ -125,6 +128,12 @@ class MergeableMaterial extends StatefulWidget {
 
   /// Whether connected pieces of [MaterialSlice] have dividers between them.
   final bool hasDividers;
+
+  /// Defines color used for dividers if [hasDividers] is true.
+  ///
+  /// If `dividerColor` is null, then [DividerThemeData.color] is used. If that
+  /// is null, then [ThemeData.dividerColor] is used.
+  final Color dividerColor;
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
@@ -204,7 +213,7 @@ class _MergeableMaterialState extends State<MergeableMaterial> with TickerProvid
 
   @override
   void dispose() {
-    for (MergeableMaterialItem child in _children) {
+    for (final MergeableMaterialItem child in _children) {
       if (child is MaterialGap)
         _animationTuples[child.key].controller.dispose();
     }
@@ -436,7 +445,7 @@ class _MergeableMaterialState extends State<MergeableMaterial> with TickerProvid
         }
       } else {
         // Check whether the items are the same type. If they are, it means that
-        // their places have been swaped.
+        // their places have been swapped.
         if ((_children[j] is MaterialGap) == (newChildren[i] is MaterialGap)) {
           _children[j] = newChildren[i];
 
@@ -560,6 +569,7 @@ class _MergeableMaterialState extends State<MergeableMaterial> with TickerProvid
           final BorderSide divider = Divider.createBorderSide(
             context,
             width: 0.5, // TODO(ianh): This probably looks terrible when the dpr isn't a power of two.
+            color: widget.dividerColor,
           );
 
           if (i == 0) {
@@ -631,7 +641,7 @@ class _MergeableMaterialSliceKey extends GlobalKey {
   final LocalKey value;
 
   @override
-  bool operator ==(dynamic other) {
+  bool operator ==(Object other) {
     return other is _MergeableMaterialSliceKey
         && other.value == value;
   }
@@ -687,7 +697,7 @@ class _RenderMergeableMaterialListBody extends RenderListBody {
   List<BoxShadow> boxShadows;
 
   void _paintShadows(Canvas canvas, Rect rect) {
-    for (BoxShadow boxShadow in boxShadows) {
+    for (final BoxShadow boxShadow in boxShadows) {
       final Paint paint = boxShadow.toPaint();
       // TODO(dragostis): Right now, we are only interpolating the border radii
       // of the visible Material slices, not the shadows; they are not getting

@@ -2,8 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
+import 'dart:ui' as ui show TextHeightBehavior;
+
 import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/rendering.dart';
 import 'package:vector_math/vector_math_64.dart';
 
@@ -233,10 +238,10 @@ class TextStyleTween extends Tween<TextStyle> {
 /// the animation. While these widgets are simple to use and don't require you
 /// to manually manage the lifecycle of an [AnimationController], they
 /// are also somewhat limited: Besides the target value for the animated
-/// property, developers can only chose a [duration] and [curve] for the
+/// property, developers can only choose a [duration] and [curve] for the
 /// animation. If you require more control over the animation (e.g. you want
-/// to stop it somewhere in the middle), consider using a
-/// [AnimatedWidget] or one of its subclasses. These widget take an [Animation]
+/// to stop it somewhere in the middle), consider using an
+/// [AnimatedWidget] or one of its subclasses. These widgets take an [Animation]
 /// as an argument to power the animation. This gives the developer full control
 /// over the animation at the cost of requiring you to manually manage the
 /// underlying [AnimationController].
@@ -360,7 +365,7 @@ abstract class ImplicitlyAnimatedWidgetState<T extends ImplicitlyAnimatedWidget>
     super.initState();
     _controller = AnimationController(
       duration: widget.duration,
-      debugLabel: kDebugMode ? '${widget.toStringShort()}' : null,
+      debugLabel: kDebugMode ? widget.toStringShort() : null,
       vsync: this,
     );
     _controller.addStatusListener((AnimationStatus status) {
@@ -473,7 +478,7 @@ abstract class ImplicitlyAnimatedWidgetState<T extends ImplicitlyAnimatedWidget>
   /// properties. Dependent properties should not be updated within
   /// [forEachTween].
   ///
-  /// {@tool sample}
+  /// {@tool snippet}
   ///
   /// This sample implements an implicitly animated widget's `State`.
   /// The widget animates between colors whenever `widget.targetColor`
@@ -574,14 +579,10 @@ abstract class AnimatedWidgetBaseState<T extends ImplicitlyAnimatedWidget> exten
 ///
 /// {@youtube 560 315 https://www.youtube.com/watch?v=yI-8QHpGIP4}
 ///
-/// Here's an illustration (implemented below) of what using this widget looks
-/// like, using a [curve] of [Curves.fastOutSlowIn].
-/// {@animation 250 266 https://flutter.github.io/assets-for-api-docs/assets/widgets/animated_container.mp4}
-///
-/// {@tool snippet --template=stateful_widget_scaffold}
+/// {@tool dartpad --template=stateful_widget_scaffold}
 ///
 /// The following example (depicted above) transitions an AnimatedContainer
-/// between two states. It adjusts the [height], [width], [color], and
+/// between two states. It adjusts the `height`, `width`, `color`, and
 /// [alignment] properties when tapped.
 ///
 /// ```dart
@@ -649,7 +650,7 @@ class AnimatedContainer extends ImplicitlyAnimatedWidget {
        assert(constraints == null || constraints.debugAssertIsValid()),
        assert(color == null || decoration == null,
          'Cannot provide both a color and a decoration\n'
-         'The color argument is just a shorthand for "decoration: new BoxDecoration(backgroundColor: color)".'
+         'The color argument is just a shorthand for "decoration: BoxDecoration(color: color)".'
        ),
        decoration = decoration ?? (color != null ? BoxDecoration(color: color) : null),
        constraints =
@@ -789,7 +790,8 @@ class _AnimatedContainerState extends AnimatedWidgetBaseState<AnimatedContainer>
 ///
 ///  * [AnimatedContainer], which can transition more values at once.
 ///  * [AnimatedAlign], which automatically transitions its child's
-///    position over a given duration whenever the given [alignment] changes.
+///    position over a given duration whenever the given
+///    [AnimatedAlign.alignment] changes.
 class AnimatedPadding extends ImplicitlyAnimatedWidget {
   /// Creates a widget that insets its child by a value that animates
   /// implicitly.
@@ -835,7 +837,9 @@ class _AnimatedPaddingState extends AnimatedWidgetBaseState<AnimatedPadding> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: _padding.evaluate(animation),
+      padding: _padding
+        .evaluate(animation)
+        .clamp(EdgeInsets.zero, EdgeInsetsGeometry.infinity),
       child: widget.child,
     );
   }
@@ -854,7 +858,7 @@ class _AnimatedPaddingState extends AnimatedWidgetBaseState<AnimatedPadding> {
 /// [Curves.fastOutSlowIn].
 /// {@animation 250 266 https://flutter.github.io/assets-for-api-docs/assets/widgets/animated_align.mp4}
 ///
-/// For the animation, you can chose a [curve] as well as a [duration] and the
+/// For the animation, you can choose a [curve] as well as a [duration] and the
 /// widget will automatically animate to the new target [alignment]. If you require
 /// more control over the animation (e.g. if you want to stop it mid-animation),
 /// consider using an [AlignTransition] instead, which takes a provided
@@ -879,10 +883,14 @@ class AnimatedAlign extends ImplicitlyAnimatedWidget {
     Key key,
     @required this.alignment,
     this.child,
+    this.heightFactor,
+    this.widthFactor,
     Curve curve = Curves.linear,
     @required Duration duration,
     VoidCallback onEnd,
   }) : assert(alignment != null),
+       assert(widthFactor == null || widthFactor >= 0.0),
+       assert(heightFactor == null || heightFactor >= 0.0),
        super(key: key, curve: curve, duration: duration, onEnd: onEnd);
 
   /// How to align the child.
@@ -908,6 +916,16 @@ class AnimatedAlign extends ImplicitlyAnimatedWidget {
   /// {@macro flutter.widgets.child}
   final Widget child;
 
+  /// If non-null, sets its height to the child's height multiplied by this factor.
+  ///
+  /// Must be greater than or equal to 0.0, defaults to null.
+  final double heightFactor;
+
+  /// If non-null, sets its width to the child's width multiplied by this factor.
+  ///
+  /// Must be greater than or equal to 0.0, defaults to null.
+  final double widthFactor;
+
   @override
   _AnimatedAlignState createState() => _AnimatedAlignState();
 
@@ -920,16 +938,26 @@ class AnimatedAlign extends ImplicitlyAnimatedWidget {
 
 class _AnimatedAlignState extends AnimatedWidgetBaseState<AnimatedAlign> {
   AlignmentGeometryTween _alignment;
+  Tween<double> _heightFactorTween;
+  Tween<double> _widthFactorTween;
 
   @override
   void forEachTween(TweenVisitor<dynamic> visitor) {
     _alignment = visitor(_alignment, widget.alignment, (dynamic value) => AlignmentGeometryTween(begin: value as AlignmentGeometry)) as AlignmentGeometryTween;
+    if(widget.heightFactor != null) {
+      _heightFactorTween = visitor(_heightFactorTween, widget.heightFactor, (dynamic value) => Tween<double>(begin: value as double)) as Tween<double>;
+    }
+    if(widget.widthFactor != null) {
+      _widthFactorTween = visitor(_widthFactorTween, widget.widthFactor, (dynamic value) => Tween<double>(begin: value as double)) as Tween<double>;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Align(
       alignment: _alignment.evaluate(animation),
+      heightFactor: _heightFactorTween?.evaluate(animation),
+      widthFactor: _widthFactorTween?.evaluate(animation),
       child: widget.child,
     );
   }
@@ -938,6 +966,8 @@ class _AnimatedAlignState extends AnimatedWidgetBaseState<AnimatedAlign> {
   void debugFillProperties(DiagnosticPropertiesBuilder description) {
     super.debugFillProperties(description);
     description.add(DiagnosticsProperty<AlignmentGeometryTween>('alignment', _alignment, defaultValue: null));
+    description.add(DiagnosticsProperty<Tween<double>>('widthFactor', _widthFactorTween, defaultValue: null));
+    description.add(DiagnosticsProperty<Tween<double>>('heightFactor', _heightFactorTween, defaultValue: null));
   }
 }
 
@@ -959,11 +989,11 @@ class _AnimatedAlignState extends AnimatedWidgetBaseState<AnimatedAlign> {
 /// of [Curves.fastOutSlowIn].
 /// {@animation 250 266 https://flutter.github.io/assets-for-api-docs/assets/widgets/animated_positioned.mp4}
 ///
-/// For the animation, you can chose a [curve] as well as a [duration] and the
+/// For the animation, you can choose a [curve] as well as a [duration] and the
 /// widget will automatically animate to the new target position. If you require
 /// more control over the animation (e.g. if you want to stop it mid-animation),
-/// consider using an [PositionedTransition] instead, which takes a provided
-/// [Animation] as argument. While that allows you to fine-tune the animation,
+/// consider using a [PositionedTransition] instead, which takes a provided
+/// [Animation] as an argument. While that allows you to fine-tune the animation,
 /// it also requires more development overhead as you have to manually manage
 /// the lifecycle of the underlying [AnimationController].
 ///
@@ -1251,7 +1281,7 @@ class _AnimatedPositionedDirectionalState extends AnimatedWidgetBaseState<Animat
 /// of [Curves.fastOutSlowIn].
 /// {@animation 250 266 https://flutter.github.io/assets-for-api-docs/assets/widgets/animated_opacity.mp4}
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// ```dart
 /// class LogoFade extends StatefulWidget {
@@ -1276,7 +1306,7 @@ class _AnimatedPositionedDirectionalState extends AnimatedWidgetBaseState<Animat
 ///           duration: Duration(seconds: 3),
 ///           child: FlutterLogo(),
 ///         ),
-///         RaisedButton(
+///         ElevatedButton(
 ///           child: Text('Fade Logo'),
 ///           onPressed: _changeOpacity,
 ///         ),
@@ -1293,6 +1323,8 @@ class _AnimatedPositionedDirectionalState extends AnimatedWidgetBaseState<Animat
 ///  * [AnimatedSwitcher], for fading between many children in sequence.
 ///  * [FadeTransition], an explicitly animated version of this widget, where
 ///    an [Animation] is provided by the caller instead of being built in.
+///  * [SliverAnimatedOpacity], for automatically transitioning a sliver's
+///    opacity over a given duration whenever the given opacity changes.
 class AnimatedOpacity extends ImplicitlyAnimatedWidget {
   /// Creates a widget that animates its opacity implicitly.
   ///
@@ -1366,22 +1398,156 @@ class _AnimatedOpacityState extends ImplicitlyAnimatedWidgetState<AnimatedOpacit
   }
 }
 
+/// Animated version of [SliverOpacity] which automatically transitions the
+/// sliver child's opacity over a given duration whenever the given opacity
+/// changes.
+///
+/// Animating an opacity is relatively expensive because it requires painting
+/// the sliver child into an intermediate buffer.
+///
+/// Here's an illustration of what using this widget looks like, using a [curve]
+/// of [Curves.fastOutSlowIn].
+///
+/// {@tool dartpad --template=stateful_widget_scaffold_center_freeform_state}
+/// Creates a [CustomScrollView] with a [SliverFixedExtentList] and a
+/// [FloatingActionButton]. Pressing the button animates the lists' opacity.
+///
+/// ```dart
+/// class _MyStatefulWidgetState extends State<MyStatefulWidget> with SingleTickerProviderStateMixin {
+///   bool _visible = true;
+///
+///   Widget build(BuildContext context) {
+///     return CustomScrollView(
+///       slivers: <Widget>[
+///         SliverAnimatedOpacity(
+///           opacity: _visible ? 1.0 : 0.0,
+///           duration: Duration(milliseconds: 500),
+///           sliver: SliverFixedExtentList(
+///             itemExtent: 100.0,
+///             delegate: SliverChildBuilderDelegate(
+///               (BuildContext context, int index) {
+///                 return Container(
+///                   color: index % 2 == 0
+///                     ? Colors.indigo[200]
+///                     : Colors.orange[200],
+///                 );
+///               },
+///               childCount: 5,
+///             ),
+///           ),
+///         ),
+///         SliverToBoxAdapter(
+///           child: FloatingActionButton(
+///             onPressed: () {
+///               setState(() {
+///                 _visible = !_visible;
+///               });
+///             },
+///             tooltip: 'Toggle opacity',
+///             child: Icon(Icons.flip),
+///           )
+///         ),
+///       ]
+///     );
+///   }
+/// }
+/// ```
+/// {@end-tool}
+///
+/// See also:
+///
+///  * [SliverFadeTransition], an explicitly animated version of this widget, where
+///    an [Animation] is provided by the caller instead of being built in.
+///  * [AnimatedOpacity], for automatically transitioning a box child's
+///    opacity over a given duration whenever the given opacity changes.
+class SliverAnimatedOpacity extends ImplicitlyAnimatedWidget {
+  /// Creates a widget that animates its opacity implicitly.
+  ///
+  /// The [opacity] argument must not be null and must be between 0.0 and 1.0,
+  /// inclusive. The [curve] and [duration] arguments must not be null.
+  const SliverAnimatedOpacity({
+    Key key,
+    this.sliver,
+    @required this.opacity,
+    Curve curve = Curves.linear,
+    @required Duration duration,
+    VoidCallback onEnd,
+    this.alwaysIncludeSemantics = false,
+  }) : assert(opacity != null && opacity >= 0.0 && opacity <= 1.0),
+      super(key: key, curve: curve, duration: duration, onEnd: onEnd);
+
+  /// The sliver below this widget in the tree.
+  final Widget sliver;
+
+  /// The target opacity.
+  ///
+  /// An opacity of 1.0 is fully opaque. An opacity of 0.0 is fully transparent
+  /// (i.e., invisible).
+  ///
+  /// The opacity must not be null.
+  final double opacity;
+
+  /// Whether the semantic information of the children is always included.
+  ///
+  /// Defaults to false.
+  ///
+  /// When true, regardless of the opacity settings the sliver child's semantic
+  /// information is exposed as if the widget were fully visible. This is
+  /// useful in cases where labels may be hidden during animations that
+  /// would otherwise contribute relevant semantics.
+  final bool alwaysIncludeSemantics;
+
+  @override
+  _SliverAnimatedOpacityState createState() => _SliverAnimatedOpacityState();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('opacity', opacity));
+  }
+}
+
+class _SliverAnimatedOpacityState extends ImplicitlyAnimatedWidgetState<SliverAnimatedOpacity> {
+  Tween<double> _opacity;
+  Animation<double> _opacityAnimation;
+
+  @override
+  void forEachTween(TweenVisitor<dynamic> visitor) {
+    _opacity = visitor(_opacity, widget.opacity, (dynamic value) => Tween<double>(begin: value as double)) as Tween<double>;
+  }
+
+  @override
+  void didUpdateTweens() {
+    _opacityAnimation = animation.drive(_opacity);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverFadeTransition(
+      opacity: _opacityAnimation,
+      sliver: widget.sliver,
+      alwaysIncludeSemantics: widget.alwaysIncludeSemantics,
+    );
+  }
+}
+
 /// Animated version of [DefaultTextStyle] which automatically transitions the
 /// default text style (the text style to apply to descendant [Text] widgets
 /// without explicit style) over a given duration whenever the given style
 /// changes.
 ///
-/// The [textAlign], [softWrap], [textOverflow], and [maxLines] properties are
-/// not animated and take effect immediately when changed.
+/// The [textAlign], [softWrap], [overflow], [maxLines], [textWidthBasis]
+/// and [textHeightBehavior] properties are not animated and take effect
+/// immediately when changed.
 ///
 /// Here's an illustration of what using this widget looks like, using a [curve]
 /// of [Curves.elasticInOut].
 /// {@animation 250 266 https://flutter.github.io/assets-for-api-docs/assets/widgets/animated_default_text_style.mp4}
 ///
-/// For the animation, you can chose a [curve] as well as a [duration] and the
+/// For the animation, you can choose a [curve] as well as a [duration] and the
 /// widget will automatically animate to the new default text style. If you require
 /// more control over the animation (e.g. if you want to stop it mid-animation),
-/// consider using an [DefaultTextStyleTransition] instead, which takes a provided
+/// consider using a [DefaultTextStyleTransition] instead, which takes a provided
 /// [Animation] as argument. While that allows you to fine-tune the animation,
 /// it also requires more development overhead as you have to manually manage
 /// the lifecycle of the underlying [AnimationController].
@@ -1398,6 +1564,8 @@ class AnimatedDefaultTextStyle extends ImplicitlyAnimatedWidget {
     this.softWrap = true,
     this.overflow = TextOverflow.clip,
     this.maxLines,
+    this.textWidthBasis = TextWidthBasis.parent,
+    this.textHeightBehavior,
     Curve curve = Curves.linear,
     @required Duration duration,
     VoidCallback onEnd,
@@ -1406,6 +1574,7 @@ class AnimatedDefaultTextStyle extends ImplicitlyAnimatedWidget {
        assert(softWrap != null),
        assert(overflow != null),
        assert(maxLines == null || maxLines > 0),
+       assert(textWidthBasis != null),
        super(key: key, curve: curve, duration: duration, onEnd: onEnd);
 
   /// The widget below this widget in the tree.
@@ -1444,6 +1613,14 @@ class AnimatedDefaultTextStyle extends ImplicitlyAnimatedWidget {
   /// See [DefaultTextStyle.maxLines] for more details.
   final int maxLines;
 
+  /// The strategy to use when calculating the width of the Text.
+  ///
+  /// See [TextWidthBasis] for possible values and their implications.
+  final TextWidthBasis textWidthBasis;
+
+  /// {@macro flutter.dart:ui.textHeightBehavior}
+  final ui.TextHeightBehavior textHeightBehavior;
+
   @override
   _AnimatedDefaultTextStyleState createState() => _AnimatedDefaultTextStyleState();
 
@@ -1455,6 +1632,8 @@ class AnimatedDefaultTextStyle extends ImplicitlyAnimatedWidget {
     properties.add(FlagProperty('softWrap', value: softWrap, ifTrue: 'wrapping at box width', ifFalse: 'no wrapping except at line break characters', showName: true));
     properties.add(EnumProperty<TextOverflow>('overflow', overflow, defaultValue: null));
     properties.add(IntProperty('maxLines', maxLines, defaultValue: null));
+    properties.add(EnumProperty<TextWidthBasis>('textWidthBasis', textWidthBasis, defaultValue: TextWidthBasis.parent));
+    properties.add(DiagnosticsProperty<ui.TextHeightBehavior>('textHeightBehavior', textHeightBehavior, defaultValue: null));
   }
 }
 
@@ -1474,6 +1653,8 @@ class _AnimatedDefaultTextStyleState extends AnimatedWidgetBaseState<AnimatedDef
       softWrap: widget.softWrap,
       overflow: widget.overflow,
       maxLines: widget.maxLines,
+      textWidthBasis: widget.textWidthBasis,
+      textHeightBehavior: widget.textHeightBehavior,
       child: widget.child,
     );
   }

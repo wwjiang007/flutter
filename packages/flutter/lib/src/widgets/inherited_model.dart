@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
@@ -170,7 +172,7 @@ abstract class InheritedModel<T> extends InheritedWidget {
     }
 
     final InheritedElement lastModel = models.last;
-    for (InheritedElement model in models) {
+    for (final InheritedElement model in models) {
       final T value = context.dependOnInheritedElement(model, aspect: aspect) as T;
       if (model == lastModel)
         return value;

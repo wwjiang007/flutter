@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/rendering.dart';
 
 import 'animated_size.dart';
@@ -38,7 +40,7 @@ enum CrossFadeState {
 /// top child and the bottom child should be keyed using the provided
 /// `topChildKey` and `bottomChildKey` keys respectively.
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// ```dart
 /// Widget defaultLayoutBuilder(Widget topChild, Key topChildKey, Widget bottomChild, Key bottomChildKey) {
@@ -84,7 +86,7 @@ typedef AnimatedCrossFadeBuilder = Widget Function(Widget topChild, Key topChild
 /// [AnimatedCrossFade] is rebuilt with a different value for the
 /// [crossFadeState] property.
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// This code fades between two representations of the Flutter logo. It depends
 /// on a boolean field `_first`; when `_first` is true, the first logo is shown,
@@ -216,7 +218,7 @@ class AnimatedCrossFade extends StatefulWidget {
   /// [AnimatedCrossFadeBuilder].
   static Widget defaultLayoutBuilder(Widget topChild, Key topChildKey, Widget bottomChild, Key bottomChildKey) {
     return Stack(
-      overflow: Overflow.visible,
+      clipBehavior: Clip.none,
       children: <Widget>[
         Positioned(
           key: bottomChildKey,

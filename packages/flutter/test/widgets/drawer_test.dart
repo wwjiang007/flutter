@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -97,7 +99,7 @@ void main() {
               onEnter: (_) { logs.add('enter'); },
               onHover: (_) { logs.add('hover'); },
               onExit: (_) { logs.add('exit'); },
-              child: Container(width: 10, height: 10),
+              child: const SizedBox(width: 10, height: 10),
             ),
           ),
         ),
@@ -268,7 +270,7 @@ void main() {
                 child: ListView(
                   children: <Widget>[
                     const Text('drawer'),
-                    FlatButton(
+                    TextButton(
                       child: const Text('close'),
                       onPressed: () => Navigator.pop(context),
                     ),
@@ -276,7 +278,7 @@ void main() {
                 ),
               ),
               body: Container(
-                child: FlatButton(
+                child: TextButton(
                   child: const Text('button'),
                   onPressed: () { buttonPressed = true; },
                 ),
@@ -304,9 +306,7 @@ void main() {
     expect(buttonPressed, equals(true));
   });
 
-  testWidgets('Dismissible ModalBarrier includes button in semantic tree on iOS', (WidgetTester tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-
+  testWidgets('Dismissible ModalBarrier includes button in semantic tree', (WidgetTester tester) async {
     final SemanticsTester semantics = SemanticsTester(tester);
     final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -328,11 +328,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(semantics, includesNodeWith(actions: <SemanticsAction>[SemanticsAction.tap]));
+    expect(semantics, includesNodeWith(label: 'Dismiss'));
 
     semantics.dispose();
-
-    debugDefaultTargetPlatformOverride = null;
-  });
+  }, variant: const TargetPlatformVariant(<TargetPlatform>{ TargetPlatform.iOS,  TargetPlatform.macOS }));
 
   testWidgets('Dismissible ModalBarrier is hidden on Android (back button is used to dismiss)', (WidgetTester tester) async {
     final SemanticsTester semantics = SemanticsTester(tester);
@@ -357,9 +356,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(semantics, isNot(includesNodeWith(actions: <SemanticsAction>[SemanticsAction.tap])));
+    expect(semantics, isNot(includesNodeWith(label: 'Dismiss')));
 
     semantics.dispose();
-  });
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   testWidgets('Drawer contains route semantics flags', (WidgetTester tester) async {
     final SemanticsTester semantics = SemanticsTester(tester);

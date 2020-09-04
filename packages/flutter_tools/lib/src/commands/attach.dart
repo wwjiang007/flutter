@@ -6,19 +6,18 @@ import 'dart:async';
 
 import 'package:meta/meta.dart';
 
+import '../android/android_device.dart';
 import '../artifacts.dart';
 import '../base/common.dart';
 import '../base/context.dart';
 import '../base/file_system.dart';
 import '../base/io.dart';
-import '../base/terminal.dart';
-import '../base/utils.dart';
-import '../cache.dart';
 import '../commands/daemon.dart';
 import '../compile.dart';
 import '../device.dart';
+import '../features.dart';
 import '../fuchsia/fuchsia_device.dart';
-import '../globals.dart';
+import '../globals.dart' as globals;
 import '../ios/devices.dart';
 import '../ios/simulators.dart';
 import '../mdns_discovery.dart';
@@ -28,6 +27,7 @@ import '../resident_runner.dart';
 import '../run_cold.dart';
 import '../run_hot.dart';
 import '../runner/flutter_command.dart';
+import '../widget_cache.dart';
 
 /// A Flutter-command that attaches to applications that have been launched
 /// without `flutter run`.
@@ -57,13 +57,15 @@ import '../runner/flutter_command.dart';
 class AttachCommand extends FlutterCommand {
   AttachCommand({bool verboseHelp = false, this.hotRunnerFactory}) {
     addBuildModeFlags(defaultToRelease: false);
-    usesIsolateFilterOption(hide: !verboseHelp);
     usesTargetOption();
     usesPortOptions();
     usesIpv6Flag();
     usesFilesystemOptions(hide: !verboseHelp);
     usesFuchsiaOptions(hide: !verboseHelp);
-    usesDartDefines();
+    usesDartDefineOption();
+    usesDeviceUserOption();
+    addEnableExperimentation(hide: !verboseHelp);
+    addNullSafetyModeOptions(hide: !verboseHelp);
     argParser
       ..addOption(
         'debug-port',
@@ -99,6 +101,8 @@ class AttachCommand extends FlutterCommand {
               'and progress in machine friendly format.',
       );
     usesTrackWidgetCreation(verboseHelp: verboseHelp);
+    addDdsOptions(verboseHelp: verboseHelp);
+    usesDeviceTimeoutOption();
     hotRunnerFactory ??= HotRunnerFactory();
   }
 
@@ -108,7 +112,20 @@ class AttachCommand extends FlutterCommand {
   final String name = 'attach';
 
   @override
-  final String description = 'Attach to a running application.';
+  final String description = '''Attach to a running application.
+
+  For attaching to Android or iOS devices, simply using `flutter attach` is
+  usually sufficient. The tool will search for a running Flutter app or module,
+  if available. Otherwise, the tool will wait for the next Flutter app or module
+  to launch before attaching.
+
+  For Fuchsia, the module name must be provided, e.g. `\$flutter attach
+  --module=mod_name`. This can be called either before or after the application
+  is started.
+
+  If the app or module is already running and the specific observatory port is
+  known, it can be explicitly provided to attach via the command-line, e.g.
+  `\$ flutter attach --debug-port 12345`''';
 
   int get debugPort {
     if (argResults['debug-port'] == null) {
@@ -116,7 +133,7 @@ class AttachCommand extends FlutterCommand {
     }
     try {
       return int.parse(stringArg('debug-port'));
-    } catch (error) {
+    } on Exception catch (error) {
       throwToolExit('Invalid port for `--debug-port`: $error');
     }
     return null;
@@ -136,6 +153,8 @@ class AttachCommand extends FlutterCommand {
   String get appId {
     return stringArg('app-id');
   }
+
+  String get userIdentifier => stringArg(FlutterOptions.kDeviceUser);
 
   @override
   Future<void> validateCommand() async {
@@ -160,26 +179,31 @@ class AttachCommand extends FlutterCommand {
       throwToolExit(
         'Either --debugPort or --debugUri can be provided, not both.');
     }
+
+    if (userIdentifier != null) {
+      final Device device = await findTargetDevice();
+      if (device is! AndroidDevice) {
+        throwToolExit('--${FlutterOptions.kDeviceUser} is only supported for Android');
+      }
+    }
   }
 
   @override
   Future<FlutterCommandResult> runCommand() async {
-    Cache.releaseLockEarly();
-
     await _validateArguments();
 
     writePidFile(stringArg('pid-file'));
 
     final Device device = await findTargetDevice();
 
-    final Artifacts artifacts = device.artifactOverrides ?? Artifacts.instance;
+    final Artifacts overrideArtifacts = device.artifactOverrides ?? globals.artifacts;
     await context.run<void>(
       body: () => _attachToDevice(device),
       overrides: <Type, Generator>{
-        Artifacts: () => artifacts,
+        Artifacts: () => overrideArtifacts,
     });
 
-    return null;
+    return FlutterCommandResult.success();
   }
 
   Future<void> _attachToDevice(Device device) async {
@@ -201,9 +225,10 @@ class AttachCommand extends FlutterCommand {
       ? Daemon(
           stdinCommandStream,
           stdoutCommandResponse,
-          notifyingLogger: NotifyingLogger(),
+          notifyingLogger: (globals.logger is NotifyingLogger)
+            ? globals.logger as NotifyingLogger
+            : NotifyingLogger(verbose: globals.logger.isVerbose, parent: globals.logger),
           logToStdout: true,
-          dartDefines: dartDefines,
         )
       : null;
 
@@ -217,17 +242,17 @@ class AttachCommand extends FlutterCommand {
       if (device is FuchsiaDevice) {
         final String module = stringArg('module');
         if (module == null) {
-          throwToolExit('\'--module\' is required for attaching to a Fuchsia device');
+          throwToolExit("'--module' is required for attaching to a Fuchsia device");
         }
-        usesIpv6 = await device.ipv6;
+        usesIpv6 = device.ipv6;
         FuchsiaIsolateDiscoveryProtocol isolateDiscoveryProtocol;
         try {
           isolateDiscoveryProtocol = device.getIsolateDiscoveryProtocol(module);
           observatoryUri = Stream<Uri>.value(await isolateDiscoveryProtocol.uri).asBroadcastStream();
-        } catch (_) {
+        } on Exception {
           isolateDiscoveryProtocol?.dispose();
           final List<ForwardedPort> ports = device.portForwarder.forwardedPorts.toList();
-          for (ForwardedPort port in ports) {
+          for (final ForwardedPort port in ports) {
             await device.portForwarder.unforward(port);
           }
           rethrow;
@@ -248,13 +273,15 @@ class AttachCommand extends FlutterCommand {
       if (observatoryUri == null) {
         final ProtocolDiscovery observatoryDiscovery =
           ProtocolDiscovery.observatory(
-            device.getLogReader(),
+            // If it's an Android device, attaching relies on past log searching
+            // to find the service protocol.
+            await device.getLogReader(includePastLogs: device is AndroidDevice),
             portForwarder: device.portForwarder,
             ipv6: ipv6,
             devicePort: deviceVmservicePort,
             hostPort: hostVmservicePort,
           );
-        printStatus('Waiting for a connection from Flutter on ${device.name}...');
+        globals.printStatus('Waiting for a connection from Flutter on ${device.name}...');
         observatoryUri = observatoryDiscovery.uris;
         // Determine ipv6 status from the scanned logs.
         usesIpv6 = observatoryDiscovery.ipv6;
@@ -272,7 +299,7 @@ class AttachCommand extends FlutterCommand {
         ).asBroadcastStream();
     }
 
-    terminal.usesTerminalUi = daemon == null;
+    globals.terminal.usesTerminalUi = daemon == null;
 
     try {
       int result;
@@ -291,10 +318,11 @@ class AttachCommand extends FlutterCommand {
             device,
             null,
             true,
-            fs.currentDirectory,
+            globals.fs.currentDirectory,
             LaunchMode.attach,
+            globals.logger as AppRunLogger,
           );
-        } catch (error) {
+        } on Exception catch (error) {
           throwToolExit(error.toString());
         }
         result = await app.runner.waitForAppToFinish();
@@ -326,11 +354,11 @@ class AttachCommand extends FlutterCommand {
         if (runner.exited || !runner.isWaitingForObservatory) {
           break;
         }
-        printStatus('Waiting for a new connection from Flutter on ${device.name}...');
+        globals.printStatus('Waiting for a new connection from Flutter on ${device.name}...');
       }
     } finally {
       final List<ForwardedPort> ports = device.portForwarder.forwardedPorts.toList();
-      for (ForwardedPort port in ports) {
+      for (final ForwardedPort port in ports) {
         await device.portForwarder.unforward(port);
       }
     }
@@ -350,18 +378,17 @@ class AttachCommand extends FlutterCommand {
     final FlutterDevice flutterDevice = await FlutterDevice.create(
       device,
       flutterProject: flutterProject,
-      trackWidgetCreation: boolArg('track-widget-creation'),
       fileSystemRoots: stringsArg('filesystem-root'),
       fileSystemScheme: stringArg('filesystem-scheme'),
-      viewFilter: stringArg('isolate-filter'),
       target: stringArg('target'),
       targetModel: TargetModel(stringArg('target-model')),
-      buildMode: getBuildMode(),
-      dartDefines: dartDefines,
+      buildInfo: getBuildInfo(),
+      userIdentifier: userIdentifier,
+      widgetCache: WidgetCache(featureFlags: featureFlags),
     );
     flutterDevice.observatoryUris = observatoryUris;
     final List<FlutterDevice> flutterDevices =  <FlutterDevice>[flutterDevice];
-    final DebuggingOptions debuggingOptions = DebuggingOptions.enabled(getBuildInfo());
+    final DebuggingOptions debuggingOptions = DebuggingOptions.enabled(getBuildInfo(), disableDds: boolArg('disable-dds'));
 
     return getBuildInfo().isDebug
       ? hotRunnerFactory.build(
@@ -407,7 +434,6 @@ class HotRunnerFactory {
     applicationBinary: applicationBinary,
     hostIsIde: hostIsIde,
     projectRootPath: projectRootPath,
-    packagesFilePath: packagesFilePath,
     dillOutputPath: dillOutputPath,
     stayResident: stayResident,
     ipv6: ipv6,

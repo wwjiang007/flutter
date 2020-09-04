@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/rendering.dart';
 
 import 'basic.dart';
@@ -17,7 +19,7 @@ import 'framework.dart';
 /// [Spacer] has taken up all of the additional space, therefore there is none
 /// left to redistribute.
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// ```dart
 /// Row(

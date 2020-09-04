@@ -25,7 +25,7 @@ void main() {
         expectAsync1((List<String> commandLine) async {
           return processRunner.runProcess(commandLine);
         })(<String>['this_executable_better_not_exist_2857632534321']),
-        throwsA(isInstanceOf<PreparePackageException>()));
+        throwsA(isA<PreparePackageException>()));
     try {
       await processRunner.runProcess(<String>['this_executable_better_not_exist_2857632534321']);
     } on PreparePackageException catch (e) {
@@ -35,7 +35,7 @@ void main() {
       );
     }
   });
-  for (String platformName in <String>['macos', 'linux', 'windows']) {
+  for (final String platformName in <String>['macos', 'linux', 'windows']) {
     final FakePlatform platform = FakePlatform(
       operatingSystem: platformName,
       environment: <String, String>{
@@ -64,7 +64,7 @@ void main() {
             expectAsync1((List<String> commandLine) async {
               return processRunner.runProcess(commandLine);
             })(<String>['echo', 'test']),
-            throwsA(isInstanceOf<PreparePackageException>()));
+            throwsA(isA<PreparePackageException>()));
       });
     });
     group('ArchiveCreator for $platformName', () {
@@ -122,6 +122,7 @@ void main() {
           '$flutter create --template=package ${createBase}package': null,
           '$flutter create --template=plugin ${createBase}plugin': null,
           'git clean -f -X **/.packages': null,
+          'git clean -f -X **/.dart_tool': null,
           if (platform.isWindows) 'attrib -h .git': null,
           if (platform.isWindows) '7za a -tzip -mx=9 $archiveName flutter': null
           else if (platform.isMacOS) 'zip -r -9 $archiveName flutter': null
@@ -157,6 +158,7 @@ void main() {
           '$flutter create --template=package ${createBase}package': null,
           '$flutter create --template=plugin ${createBase}plugin': null,
           'git clean -f -X **/.packages': null,
+          'git clean -f -X **/.dart_tool': null,
           if (platform.isWindows) 'attrib -h .git': null,
           if (platform.isWindows) '7za a -tzip -mx=9 $archiveName flutter': null
           else if (platform.isMacOS) 'zip -r -9 $archiveName flutter': null
@@ -185,8 +187,7 @@ void main() {
           'git reset --hard $testRef': <ProcessResult>[ProcessResult(0, -1, 'output2', '')],
         };
         processManager.fakeResults = calls;
-        expect(expectAsync0(creator.initializeRepo),
-            throwsA(isInstanceOf<PreparePackageException>()));
+        expect(expectAsync0(creator.initializeRepo), throwsA(isA<PreparePackageException>()));
       });
 
       test('non-strict mode calls the right commands', () async {
@@ -207,6 +208,7 @@ void main() {
           '$flutter create --template=package ${createBase}package': null,
           '$flutter create --template=plugin ${createBase}plugin': null,
           'git clean -f -X **/.packages': null,
+          'git clean -f -X **/.dart_tool': null,
           if (platform.isWindows) 'attrib -h .git': null,
           if (platform.isWindows) '7za a -tzip -mx=9 $archiveName flutter': null
           else if (platform.isMacOS) 'zip -r -9 $archiveName flutter': null
@@ -251,7 +253,8 @@ void main() {
         final String gsArchivePath = 'gs://flutter_infra/releases/stable/$platformName/$archiveName';
         final String jsonPath = path.join(tempDir.absolute.path, releasesName);
         final String gsJsonPath = 'gs://flutter_infra/releases/$releasesName';
-        final String releasesJson = '''{
+        final String releasesJson = '''
+{
   "base_url": "https://storage.googleapis.com/flutter_infra/releases",
   "current_release": {
     "beta": "3ea4d06340a97a1e9d7cae97567c64e0569dcaa2",

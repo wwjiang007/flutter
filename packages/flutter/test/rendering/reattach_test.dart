@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../flutter_test_alternative.dart';
@@ -39,7 +41,7 @@ class TestTree {
       ),
     );
   }
-  RenderObject root;
+  RenderBox root;
   RenderConstrainedBox child;
   bool painted = false;
 }
@@ -75,7 +77,7 @@ class TestCompositingBitsTree {
       ),
     );
   }
-  RenderObject root;
+  RenderBox root;
   MutableCompositor compositor;
   RenderConstrainedBox child;
   bool painted = false;

@@ -6,28 +6,28 @@ import 'dart:async';
 
 import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
+import 'package:file/file.dart';
 import 'package:meta/meta.dart';
-import 'package:quiver/strings.dart';
 
 import '../application_package.dart';
 import '../base/common.dart';
 import '../base/context.dart';
-import '../base/file_system.dart';
 import '../base/io.dart' as io;
 import '../base/signals.dart';
 import '../base/terminal.dart';
-import '../base/time.dart';
 import '../base/user_messages.dart';
 import '../base/utils.dart';
 import '../build_info.dart';
+import '../build_system/build_system.dart';
+import '../build_system/targets/icon_tree_shaker.dart' show kIconTreeShakerEnabledDefault;
 import '../bundle.dart' as bundle;
 import '../cache.dart';
+import '../dart/generate_synthetic_packages.dart';
 import '../dart/package_map.dart';
 import '../dart/pub.dart';
 import '../device.dart';
-import '../doctor.dart';
 import '../features.dart';
-import '../globals.dart';
+import '../globals.dart' as globals;
 import '../project.dart';
 import '../reporting/reporting.dart';
 import 'flutter_command_runner.dart';
@@ -50,6 +50,21 @@ class FlutterCommandResult {
     this.timingLabelParts,
     this.endTimeOverride,
   });
+
+  /// A command that succeeded. It is used to log the result of a command invocation.
+  factory FlutterCommandResult.success() {
+    return const FlutterCommandResult(ExitStatus.success);
+  }
+
+  /// A command that exited with a warning. It is used to log the result of a command invocation.
+  factory FlutterCommandResult.warning() {
+    return const FlutterCommandResult(ExitStatus.warning);
+  }
+
+  /// A command that failed. It is used to log the result of a command invocation.
+  factory FlutterCommandResult.fail() {
+    return const FlutterCommandResult(ExitStatus.fail);
+  }
 
   final ExitStatus exitStatus;
 
@@ -91,6 +106,16 @@ class FlutterOptions {
   static const String kEnableExperiment = 'enable-experiment';
   static const String kFileSystemRoot = 'filesystem-root';
   static const String kFileSystemScheme = 'filesystem-scheme';
+  static const String kSplitDebugInfoOption = 'split-debug-info';
+  static const String kDartObfuscationOption = 'obfuscate';
+  static const String kDartDefinesOption = 'dart-define';
+  static const String kBundleSkSLPathOption = 'bundle-sksl-path';
+  static const String kPerformanceMeasurementFile = 'performance-measurement-file';
+  static const String kNullSafety = 'sound-null-safety';
+  static const String kDeviceUser = 'device-user';
+  static const String kDeviceTimeout = 'device-timeout';
+  static const String kAnalyzeSize = 'analyze-size';
+  static const String kNullAssertions = 'null-assertions';
 }
 
 abstract class FlutterCommand extends Command<void> {
@@ -109,7 +134,7 @@ abstract class FlutterCommand extends Command<void> {
   ArgParser get argParser => _argParser;
   final ArgParser _argParser = ArgParser(
     allowTrailingOptions: false,
-    usageLineLength: outputPreferences.wrapText ? outputPreferences.wrapColumn : null,
+    usageLineLength: globals.outputPreferences.wrapText ? globals.outputPreferences.wrapColumn : null,
   );
 
   @override
@@ -130,6 +155,11 @@ abstract class FlutterCommand extends Command<void> {
 
   bool get shouldUpdateCache => true;
 
+  bool get deprecated => false;
+
+  @override
+  bool get hidden => deprecated;
+
   bool _excludeDebug = false;
 
   BuildMode _defaultBuildMode;
@@ -141,7 +171,11 @@ abstract class FlutterCommand extends Command<void> {
   void usesWebOptions({ bool hide = true }) {
     argParser.addOption('web-hostname',
       defaultsTo: 'localhost',
-      help: 'The hostname to serve web application on.',
+      help:
+        'The hostname that the web sever will use to resolve an IP to serve '
+        'from. The unresolved hostname is used to launch Chrome when using '
+        'the chrome Device. The name "any" may also be used to serve on any '
+        'IPV4 for either the Chrome or web-server device.',
       hide: hide,
     );
     argParser.addOption('web-port',
@@ -150,10 +184,46 @@ abstract class FlutterCommand extends Command<void> {
         'will select a random open port on the host.',
       hide: hide,
     );
+    argParser.addOption('web-server-debug-protocol',
+      allowed: <String>['sse', 'ws'],
+      defaultsTo: 'sse',
+      help: 'The protocol (SSE or WebSockets) to use for the debug service proxy '
+      'when using the Web Server device and Dart Debug extension. '
+      'This is useful for editors/debug adapters that do not support debugging '
+      'over SSE (the default protocol for Web Server/Dart Debugger extension).',
+      hide: hide,
+    );
+    argParser.addOption('web-server-debug-backend-protocol',
+      allowed: <String>['sse', 'ws'],
+      defaultsTo: 'sse',
+      help: 'The protocol (SSE or WebSockets) to use for the Dart Debug Extension '
+      'backend service when using the Web Server device. '
+      'Using WebSockets can improve performance but may fail when connecting through '
+      'some proxy servers.',
+      hide: hide,
+    );
     argParser.addFlag('web-allow-expose-url',
       defaultsTo: false,
       help: 'Enables daemon-to-editor requests (app.exposeUrl) for exposing URLs '
         'when running on remote machines.',
+      hide: hide,
+    );
+    argParser.addFlag('web-run-headless',
+      defaultsTo: false,
+      help: 'Launches the browser in headless mode. Currently only Chrome '
+        'supports this option.',
+      hide: true,
+    );
+    argParser.addOption('web-browser-debug-port',
+      help: 'The debug port the browser should use. If not specified, a '
+        'random port is selected. Currently only Chrome supports this option. '
+        'It serves the Chrome DevTools Protocol '
+        '(https://chromedevtools.github.io/devtools-protocol/).',
+      hide: true,
+    );
+    argParser.addFlag('web-enable-expression-evaluation',
+      defaultsTo: true,
+      help: 'Enables expression evaluation in the debugger.',
       hide: hide,
     );
   }
@@ -215,7 +285,7 @@ abstract class FlutterCommand extends Command<void> {
   /// Adds options for connecting to the Dart VM observatory port.
   void usesPortOptions() {
     argParser.addOption(observatoryPortOption,
-        help: '(deprecated use host-vmservice-port instead)'
+        help: '(deprecated use host-vmservice-port instead) '
               'Listen to the given port for an observatory debugger connection.\n'
               'Specifying port 0 (the default) will find a random free port.',
     );
@@ -230,6 +300,19 @@ abstract class FlutterCommand extends Command<void> {
             '(the default) will find a random free host port.'
     );
     _usesPortOption = true;
+  }
+
+  void addDdsOptions({@required bool verboseHelp}) {
+    argParser.addFlag(
+      'disable-dds',
+      hide: !verboseHelp,
+      help: 'Disable the Dart Developer Service (DDS). This flag should only be provided'
+            ' when attaching to an application with an existing DDS instance (e.g.,'
+            ' attaching to an application currently connected to by "flutter run") or'
+            ' when running certain tests.\n'
+            'Note: passing this flag may degrade IDE functionality if a DDS instance is not'
+            ' already connected to the target application.'
+    );
   }
 
   /// Gets the vmservice port provided to in the 'observatory-port' or
@@ -291,8 +374,8 @@ abstract class FlutterCommand extends Command<void> {
         help: 'An identifier used as an internal version number.\n'
               'Each build must have a unique identifier to differentiate it from previous builds.\n'
               'It is used to determine whether one build is more recent than another, with higher numbers indicating more recent build.\n'
-              'On Android it is used as \'versionCode\'.\n'
-              'On Xcode builds it is used as \'CFBundleVersion\'',
+              "On Android it is used as 'versionCode'.\n"
+              "On Xcode builds it is used as 'CFBundleVersion'",
     );
   }
 
@@ -300,32 +383,49 @@ abstract class FlutterCommand extends Command<void> {
     argParser.addOption('build-name',
         help: 'A "x.y.z" string used as the version number shown to users.\n'
               'For each new version of your app, you will provide a version number to differentiate it from previous versions.\n'
-              'On Android it is used as \'versionName\'.\n'
-              'On Xcode builds it is used as \'CFBundleShortVersionString\'',
+              "On Android it is used as 'versionName'.\n"
+              "On Xcode builds it is used as 'CFBundleShortVersionString'",
         valueHelp: 'x.y.z');
   }
 
-  void usesDartDefines() {
+  void usesDartDefineOption() {
     argParser.addMultiOption(
-      'dart-define',
-      help: 'Passed to the Dart compiler building this application as a -D flag.\n'
-            'Values supported by this option are compiler implementation specific.\n'
+      FlutterOptions.kDartDefinesOption,
+      help: 'Additional key-value pairs that will be available as constants '
+            'from the String.fromEnvironment, bool.fromEnvironment, int.fromEnvironment, '
+            'and double.fromEnvironment constructors.\n'
             'Multiple defines can be passed by repeating --dart-define multiple times.',
-      valueHelp: 'FOO=bar',
-      hide: true,
+      valueHelp: 'foo=bar',
     );
   }
 
-  /// The values passed via the `--dart-define` option.
-  List<String> get dartDefines => stringsArg('dart-define');
-
-  void usesIsolateFilterOption({ @required bool hide }) {
-    argParser.addOption('isolate-filter',
-      defaultsTo: null,
-      hide: hide,
-      help: 'Restricts commands to a subset of the available isolates (running instances of Flutter).\n'
-            'Normally there\'s only one, but when adding Flutter to a pre-existing app it\'s possible to create multiple.');
+  void usesDeviceUserOption() {
+    argParser.addOption(FlutterOptions.kDeviceUser,
+      help: 'Identifier number for a user or work profile on Android only. Run "adb shell pm list users" for available identifiers.',
+      valueHelp: '10');
   }
+
+  void usesDeviceTimeoutOption() {
+    argParser.addOption(
+      FlutterOptions.kDeviceTimeout,
+      help: 'Time in seconds to wait for devices to attach. Longer timeouts may be necessary for networked devices.',
+      valueHelp: '10'
+    );
+  }
+
+  Duration get deviceDiscoveryTimeout {
+    if (_deviceDiscoveryTimeout == null
+        && argResults.options.contains(FlutterOptions.kDeviceTimeout)
+        && argResults.wasParsed(FlutterOptions.kDeviceTimeout)) {
+      final int timeoutSeconds = int.tryParse(stringArg(FlutterOptions.kDeviceTimeout));
+      if (timeoutSeconds == null) {
+        throwToolExit( 'Could not parse --${FlutterOptions.kDeviceTimeout} argument. It must be an integer.');
+      }
+      _deviceDiscoveryTimeout = Duration(seconds: timeoutSeconds);
+    }
+    return _deviceDiscoveryTimeout;
+  }
+  Duration _deviceDiscoveryTimeout;
 
   void addBuildModeFlags({ bool defaultToRelease = true, bool verboseHelp = false, bool excludeDebug = false }) {
     // A release build must be the default if a debug build is not possible.
@@ -350,17 +450,94 @@ abstract class FlutterCommand extends Command<void> {
       help: 'Build a JIT release version of your app${defaultToRelease ? ' (default mode)' : ''}.');
   }
 
+  void addSplitDebugInfoOption() {
+    argParser.addOption(FlutterOptions.kSplitDebugInfoOption,
+      help: 'In a release build, this flag reduces application size by storing '
+        'Dart program symbols in a separate file on the host rather than in the '
+        'application. The value of the flag should be a directory where program '
+        'symbol files can be stored for later use. These symbol files contain '
+        'the information needed to symbolize Dart stack traces. For an app built '
+        "with this flag, the 'flutter symbolize' command with the right program "
+        'symbol file is required to obtain a human readable stack trace.',
+      valueHelp: '/project-name/v1.2.3/',
+    );
+  }
+
+  void addDartObfuscationOption() {
+    argParser.addFlag(FlutterOptions.kDartObfuscationOption,
+      help: 'In a release build, this flag removes identifiers and replaces them '
+        'with randomized values for the purposes of source code obfuscation. This '
+        'flag must always be combined with "--split-debug-info" option, the '
+        'mapping between the values and the original identifiers is stored in the '
+        'symbol map created in the specified directory. For an app built with this '
+        'flag, the \'flutter symbolize\' command with the right program '
+        'symbol file is required to obtain a human readable stack trace.\n\n'
+        'Because all identifiers are renamed, methods like Object.runtimeType, '
+        'Type.toString, Enum.toString, Stacktrace.toString, Symbol.toString '
+        '(for constant symbols or those generated by runtime system) will '
+        'return obfuscated results. Any code or tests that rely on exact names '
+        'will break.'
+    );
+  }
+
+  void addBundleSkSLPathOption({ @required bool hide }) {
+    argParser.addOption(FlutterOptions.kBundleSkSLPathOption,
+      help: 'A path to a file containing precompiled SkSL shaders generated '
+        'during "flutter run". These can be included in an application to '
+        'improve the first frame render times.',
+      hide: hide,
+      valueHelp: '/project-name/flutter_1.sksl'
+    );
+  }
+
+  void addTreeShakeIconsFlag({
+    bool enabledByDefault
+  }) {
+    argParser.addFlag('tree-shake-icons',
+      negatable: true,
+      defaultsTo: enabledByDefault
+        ?? kIconTreeShakerEnabledDefault,
+      help: 'Tree shake icon fonts so that only glyphs used by the application remain.',
+    );
+  }
+
   void addShrinkingFlag() {
     argParser.addFlag('shrink',
       negatable: true,
       defaultsTo: true,
-      help: 'Whether to enable code shrinking on release mode.'
+      help: 'Whether to enable code shrinking on release mode. '
             'When enabling shrinking, you also benefit from obfuscation, '
             'which shortens the names of your app’s classes and members, '
             'and optimization, which applies more aggressive strategies to '
-            'further reduce the size of your app.'
+            'further reduce the size of your app. '
             'To learn more, see: https://developer.android.com/studio/build/shrink-code',
       );
+  }
+
+  void addNullSafetyModeOptions({ @required bool hide }) {
+    argParser.addFlag(FlutterOptions.kNullSafety,
+      help:
+        'Whether to override the inferred null safety mode. This allows null-safe '
+        'libraries to depend on un-migrated (non-null safe) libraries. By default, '
+        'Flutter mobile & desktop applications will attempt to run at the null safety '
+        'level of their entrypoint library (usually lib/main.dart). Flutter web '
+        'applications will default to sound null-safety, unless specifically configured.',
+      defaultsTo: null,
+      hide: hide,
+    );
+    argParser.addFlag(FlutterOptions.kNullAssertions,
+      help:
+        'Perform additional null assertions on the boundaries of migrated and '
+        'unmigrated code. This setting is not currently supported on desktop '
+        'devices.'
+    );
+  }
+
+  void usesExtraFrontendOptions() {
+    argParser.addMultiOption(FlutterOptions.kExtraFrontEndOptions,
+      splitCommas: true,
+      hide: true,
+    );
   }
 
   void usesFuchsiaOptions({ bool hide = false }) {
@@ -378,6 +555,44 @@ abstract class FlutterCommand extends Command<void> {
       help: 'The name of the module (required if attaching to a fuchsia device)',
       valueHelp: 'module-name',
     );
+  }
+
+  void addEnableExperimentation({ @required bool hide }) {
+    argParser.addMultiOption(
+      FlutterOptions.kEnableExperiment,
+      help:
+        'The name of an experimental Dart feature to enable. For more info '
+        'see: https://github.com/dart-lang/sdk/blob/master/docs/process/'
+        'experimental-flags.md',
+      hide: hide,
+    );
+  }
+
+  void addBuildPerformanceFile({ bool hide = false }) {
+    argParser.addOption(
+      FlutterOptions.kPerformanceMeasurementFile,
+      help:
+        'The name of a file where flutter assemble performance and '
+        'cachedness information will be written in a JSON format.'
+    );
+  }
+
+  /// Adds build options common to all of the desktop build commands.
+  void addCommonDesktopBuildOptions({ bool verboseHelp = false }) {
+    addBuildModeFlags(verboseHelp: verboseHelp);
+    addBuildPerformanceFile(hide: !verboseHelp);
+    addBundleSkSLPathOption(hide: !verboseHelp);
+    addDartObfuscationOption();
+    addEnableExperimentation(hide: !verboseHelp);
+    addNullSafetyModeOptions(hide: !verboseHelp);
+    addSplitDebugInfoOption();
+    addTreeShakeIconsFlag();
+    usesAnalyzeSizeFlag();
+    usesDartDefineOption();
+    usesExtraFrontendOptions();
+    usesPubOption();
+    usesTargetOption();
+    usesTrackWidgetCreation(verboseHelp: verboseHelp);
   }
 
   set defaultBuildMode(BuildMode value) {
@@ -432,39 +647,120 @@ abstract class FlutterCommand extends Command<void> {
     );
   }
 
-  BuildInfo getBuildInfo() {
+  void usesAnalyzeSizeFlag() {
+    argParser.addFlag(
+      FlutterOptions.kAnalyzeSize,
+      defaultsTo: false,
+      help: 'Whether to produce additional profile information for artifact output size. '
+        'This flag is only supported on release builds. When building for Android, a single '
+        'ABI must be specified at a time with the --target-platform flag. When building for iOS, '
+        'only the symbols from the arm64 architecture are used to analyze code size.'
+    );
+  }
+
+  /// Compute the [BuildInfo] for the current flutter command.
+  /// Commands that build multiple build modes can pass in a [forcedBuildMode]
+  /// to be used instead of parsing flags.
+  ///
+  /// Throws a [ToolExit] if the current set of options is not compatible with
+  /// each other.
+  BuildInfo getBuildInfo({ BuildMode forcedBuildMode }) {
     final bool trackWidgetCreation = argParser.options.containsKey('track-widget-creation') &&
       boolArg('track-widget-creation');
 
     final String buildNumber = argParser.options.containsKey('build-number')
-        ? stringArg('build-number')
-        : null;
+      ? stringArg('build-number')
+      : null;
 
-    String extraFrontEndOptions =
-        argParser.options.containsKey(FlutterOptions.kExtraFrontEndOptions)
-            ? stringArg(FlutterOptions.kExtraFrontEndOptions)
-            : null;
-    if (argParser.options.containsKey(FlutterOptions.kEnableExperiment) &&
-        argResults[FlutterOptions.kEnableExperiment] != null) {
-      for (String expFlag in stringsArg(FlutterOptions.kEnableExperiment)) {
+    final List<String> experiments =
+      argParser.options.containsKey(FlutterOptions.kEnableExperiment)
+        ? stringsArg(FlutterOptions.kEnableExperiment).toList()
+        : <String>[];
+    final List<String> extraGenSnapshotOptions =
+      argParser.options.containsKey(FlutterOptions.kExtraGenSnapshotOptions)
+        ? stringsArg(FlutterOptions.kExtraGenSnapshotOptions).toList()
+        : <String>[];
+    final List<String> extraFrontEndOptions =
+      argParser.options.containsKey(FlutterOptions.kExtraFrontEndOptions)
+          ? stringsArg(FlutterOptions.kExtraFrontEndOptions).toList()
+          : <String>[];
+
+    if (experiments.isNotEmpty) {
+      for (final String expFlag in experiments) {
         final String flag = '--enable-experiment=' + expFlag;
-        if (extraFrontEndOptions != null) {
-          extraFrontEndOptions += ',' + flag;
-        } else {
-          extraFrontEndOptions = flag;
-        }
+        extraFrontEndOptions.add(flag);
+        extraGenSnapshotOptions.add(flag);
       }
     }
 
-    return BuildInfo(getBuildMode(),
+    String codeSizeDirectory;
+    if (argParser.options.containsKey(FlutterOptions.kAnalyzeSize) && boolArg(FlutterOptions.kAnalyzeSize)) {
+      final Directory directory = globals.fsUtils.getUniqueDirectory(
+        globals.fs.directory(getBuildDirectory()),
+        'flutter_size',
+      );
+      directory.createSync(recursive: true);
+      codeSizeDirectory = directory.path;
+    }
+
+    NullSafetyMode nullSafetyMode = NullSafetyMode.unsound;
+    if (argParser.options.containsKey(FlutterOptions.kNullSafety)) {
+      final bool nullSafety = boolArg(FlutterOptions.kNullSafety);
+      // Explicitly check for `true` and `false` so that `null` results in not
+      // passing a flag. This will use the automatically detected null-safety
+      // value based on the entrypoint
+      if (nullSafety == true) {
+        nullSafetyMode = NullSafetyMode.sound;
+        extraFrontEndOptions.add('--sound-null-safety');
+      } else if (nullSafety == false) {
+        nullSafetyMode = NullSafetyMode.unsound;
+        extraFrontEndOptions.add('--no-sound-null-safety');
+      } else if (extraFrontEndOptions.contains('--enable-experiment=non-nullable')) {
+        nullSafetyMode = NullSafetyMode.autodetect;
+      }
+    }
+
+    final bool dartObfuscation = argParser.options.containsKey(FlutterOptions.kDartObfuscationOption)
+      && boolArg(FlutterOptions.kDartObfuscationOption);
+
+    final String splitDebugInfoPath = argParser.options.containsKey(FlutterOptions.kSplitDebugInfoOption)
+      ? stringArg(FlutterOptions.kSplitDebugInfoOption)
+      : null;
+
+    if (dartObfuscation && (splitDebugInfoPath == null || splitDebugInfoPath.isEmpty)) {
+      throwToolExit(
+        '"--${FlutterOptions.kDartObfuscationOption}" can only be used in '
+        'combination with "--${FlutterOptions.kSplitDebugInfoOption}"',
+      );
+    }
+    final BuildMode buildMode = forcedBuildMode ?? getBuildMode();
+    if (buildMode != BuildMode.release && codeSizeDirectory != null) {
+      throwToolExit('--analyze-size can only be used on release builds.');
+    }
+
+    final bool treeShakeIcons = argParser.options.containsKey('tree-shake-icons')
+      && buildMode.isPrecompiled
+      && boolArg('tree-shake-icons');
+
+    final String bundleSkSLPath = argParser.options.containsKey(FlutterOptions.kBundleSkSLPathOption)
+      ? stringArg(FlutterOptions.kBundleSkSLPathOption)
+      : null;
+
+    final String performanceMeasurementFile = argParser.options.containsKey(FlutterOptions.kPerformanceMeasurementFile)
+      ? stringArg(FlutterOptions.kPerformanceMeasurementFile)
+      : null;
+
+    return BuildInfo(buildMode,
       argParser.options.containsKey('flavor')
         ? stringArg('flavor')
         : null,
       trackWidgetCreation: trackWidgetCreation,
-      extraFrontEndOptions: extraFrontEndOptions,
-      extraGenSnapshotOptions: argParser.options.containsKey(FlutterOptions.kExtraGenSnapshotOptions)
-          ? stringArg(FlutterOptions.kExtraGenSnapshotOptions)
-          : null,
+      extraFrontEndOptions: extraFrontEndOptions?.isNotEmpty ?? false
+        ? extraFrontEndOptions
+        : null,
+      extraGenSnapshotOptions: extraGenSnapshotOptions?.isNotEmpty ?? false
+        ? extraGenSnapshotOptions
+        : null,
       fileSystemRoots: argParser.options.containsKey(FlutterOptions.kFileSystemRoot)
           ? stringsArg(FlutterOptions.kFileSystemRoot)
           : null,
@@ -475,6 +771,18 @@ abstract class FlutterCommand extends Command<void> {
       buildName: argParser.options.containsKey('build-name')
           ? stringArg('build-name')
           : null,
+      treeShakeIcons: treeShakeIcons,
+      splitDebugInfoPath: splitDebugInfoPath,
+      dartObfuscation: dartObfuscation,
+      dartDefines: argParser.options.containsKey(FlutterOptions.kDartDefinesOption)
+          ? stringsArg(FlutterOptions.kDartDefinesOption)
+          : const <String>[],
+      bundleSkSLPath: bundleSkSLPath,
+      dartExperiments: experiments,
+      performanceMeasurementFile: performanceMeasurementFile,
+      packagesPath: globalResults['packages'] as String ?? '.packages',
+      nullSafetyMode: nullSafetyMode,
+      codeSizeDirectory: codeSizeDirectory,
     );
   }
 
@@ -507,42 +815,51 @@ abstract class FlutterCommand extends Command<void> {
   /// so that this method can record and report the overall time to analytics.
   @override
   Future<void> run() {
-    final DateTime startTime = systemClock.now();
+    final DateTime startTime = globals.systemClock.now();
 
     return context.run<void>(
       name: 'command',
       overrides: <Type, Generator>{FlutterCommand: () => this},
       body: () async {
         // Prints the welcome message if needed.
-        flutterUsage.printWelcome();
+        globals.flutterUsage.printWelcome();
+        _printDeprecationWarning();
         final String commandPath = await usagePath;
         _registerSignalHandlers(commandPath, startTime);
-        FlutterCommandResult commandResult;
+        FlutterCommandResult commandResult = FlutterCommandResult.fail();
         try {
           commandResult = await verifyThenRunCommand(commandPath);
-        } on ToolExit {
-          commandResult = const FlutterCommandResult(ExitStatus.fail);
-          rethrow;
         } finally {
-          final DateTime endTime = systemClock.now();
-          printTrace(userMessages.flutterElapsedTime(name, getElapsedAsMilliseconds(endTime.difference(startTime))));
+          final DateTime endTime = globals.systemClock.now();
+          globals.printTrace(userMessages.flutterElapsedTime(name, getElapsedAsMilliseconds(endTime.difference(startTime))));
           _sendPostUsage(commandPath, commandResult, startTime, endTime);
         }
       },
     );
   }
 
+  void _printDeprecationWarning() {
+    if (deprecated) {
+      globals.printStatus('$warningMark The "$name" command is deprecated and '
+          'will be removed in a future version of Flutter. '
+          'See https://flutter.dev/docs/development/tools/sdk/releases '
+          'for previous releases of Flutter.');
+      globals.printStatus('');
+    }
+  }
+
   void _registerSignalHandlers(String commandPath, DateTime startTime) {
     final SignalHandler handler = (io.ProcessSignal s) {
+      Cache.releaseLock();
       _sendPostUsage(
         commandPath,
         const FlutterCommandResult(ExitStatus.killed),
         startTime,
-        systemClock.now(),
+        globals.systemClock.now(),
       );
     };
-    signals.addHandler(io.ProcessSignal.SIGTERM, handler);
-    signals.addHandler(io.ProcessSignal.SIGINT, handler);
+    globals.signals.addHandler(io.ProcessSignal.SIGTERM, handler);
+    globals.signals.addHandler(io.ProcessSignal.SIGINT, handler);
   }
 
   /// Logs data about this command.
@@ -558,32 +875,36 @@ abstract class FlutterCommand extends Command<void> {
     if (commandPath == null) {
       return;
     }
-
+    assert(commandResult != null);
     // Send command result.
     CommandResultEvent(commandPath, commandResult).send();
 
     // Send timing.
     final List<String> labels = <String>[
-      if (commandResult?.exitStatus != null)
+      if (commandResult.exitStatus != null)
         getEnumName(commandResult.exitStatus),
-      if (commandResult?.timingLabelParts?.isNotEmpty ?? false)
+      if (commandResult.timingLabelParts?.isNotEmpty ?? false)
         ...commandResult.timingLabelParts,
     ];
 
     final String label = labels
-        .where((String label) => !isBlank(label))
+        .where((String label) => !_isBlank(label))
         .join('-');
-    flutterUsage.sendTiming(
+    globals.flutterUsage.sendTiming(
       'flutter',
       name,
       // If the command provides its own end time, use it. Otherwise report
       // the duration of the entire execution.
-      (commandResult?.endTimeOverride ?? endTime).difference(startTime),
+      (commandResult.endTimeOverride ?? endTime).difference(startTime),
       // Report in the form of `success-[parameter1-parameter2]`, all of which
       // can be null if the command doesn't provide a FlutterCommandResult.
       label: label == '' ? null : label,
     );
   }
+
+  List<String> get _enabledExperiments => argParser.options.containsKey(FlutterOptions.kEnableExperiment)
+    ? stringsArg(FlutterOptions.kEnableExperiment)
+    : <String>[];
 
   /// Perform validation then call [runCommand] to execute the command.
   /// Return a [Future] that completes with an exit code
@@ -598,27 +919,52 @@ abstract class FlutterCommand extends Command<void> {
     // sky_engine package is available in the flutter cache for pub to find.
     if (shouldUpdateCache) {
       // First always update universal artifacts, as some of these (e.g.
-      // idevice_id on macOS) are required to determine `requiredArtifacts`.
-      await cache.updateAll(<DevelopmentArtifact>{DevelopmentArtifact.universal});
+      // ios-deploy on macOS) are required to determine `requiredArtifacts`.
+      await globals.cache.updateAll(<DevelopmentArtifact>{DevelopmentArtifact.universal});
 
-      await cache.updateAll(await requiredArtifacts);
+      await globals.cache.updateAll(await requiredArtifacts);
     }
 
     await validateCommand();
 
     if (shouldRunPub) {
-      await pub.get(context: PubContext.getVerifyContext(name));
       final FlutterProject project = FlutterProject.current();
+      final Environment environment = Environment(
+        artifacts: globals.artifacts,
+        logger: globals.logger,
+        cacheDir: globals.cache.getRoot(),
+        engineVersion: globals.flutterVersion.engineRevision,
+        fileSystem: globals.fs,
+        flutterRootDir: globals.fs.directory(Cache.flutterRoot),
+        outputDir: globals.fs.directory(getBuildDirectory()),
+        processManager: globals.processManager,
+        projectDir: project.directory,
+      );
+
+      await generateLocalizationsSyntheticPackage(
+        environment: environment,
+        buildSystem: globals.buildSystem,
+      );
+
+      await pub.get(
+        context: PubContext.getVerifyContext(name),
+        generateSyntheticPackage: project.manifest.generateSyntheticPackage,
+      );
+      // All done updating dependencies. Release the cache lock.
+      Cache.releaseLock();
       await project.ensureReadyForPlatformSpecificTooling(checkProjects: true);
+    } else {
+      Cache.releaseLock();
     }
 
     setupApplicationPackages();
 
     if (commandPath != null) {
-      final Map<CustomDimensions, String> additionalUsageValues =
-        <CustomDimensions, String>{
+      final Map<CustomDimensions, Object> additionalUsageValues =
+        <CustomDimensions, Object>{
           ...?await usageValues,
-          CustomDimensions.commandHasTerminal: io.stdout.hasTerminal ? 'true' : 'false',
+          CustomDimensions.commandHasTerminal: globals.stdio.hasTerminal,
+          CustomDimensions.nullSafety: _enabledExperiments.contains('non-nullable'),
         };
       Usage.command(commandPath, parameters: additionalUsageValues);
     }
@@ -642,30 +988,47 @@ abstract class FlutterCommand extends Command<void> {
   /// If no device can be found that meets specified criteria,
   /// then print an error message and return null.
   Future<List<Device>> findAllTargetDevices() async {
-    if (!doctor.canLaunchAnything) {
-      printError(userMessages.flutterNoDevelopmentDevice);
+    if (!globals.doctor.canLaunchAnything) {
+      globals.printError(userMessages.flutterNoDevelopmentDevice);
       return null;
     }
-
-    List<Device> devices = await deviceManager.findTargetDevices(FlutterProject.current());
+    final DeviceManager deviceManager = globals.deviceManager;
+    List<Device> devices = await deviceManager.findTargetDevices(FlutterProject.current(), timeout: deviceDiscoveryTimeout);
 
     if (devices.isEmpty && deviceManager.hasSpecifiedDeviceId) {
-      printStatus(userMessages.flutterNoMatchingDevice(deviceManager.specifiedDeviceId));
-      return null;
-    } else if (devices.isEmpty && deviceManager.hasSpecifiedAllDevices) {
-      printStatus(userMessages.flutterNoDevicesFound);
+      globals.printStatus(userMessages.flutterNoMatchingDevice(deviceManager.specifiedDeviceId));
       return null;
     } else if (devices.isEmpty) {
-      printStatus(userMessages.flutterNoSupportedDevices);
+      if (deviceManager.hasSpecifiedAllDevices) {
+        globals.printStatus(userMessages.flutterNoDevicesFound);
+      } else {
+        globals.printStatus(userMessages.flutterNoSupportedDevices);
+      }
+      final List<Device> unsupportedDevices = await deviceManager.getDevices();
+      if (unsupportedDevices.isNotEmpty) {
+        final StringBuffer result = StringBuffer();
+        result.writeln(userMessages.flutterFoundButUnsupportedDevices);
+        result.writeAll(
+          await Device.descriptions(unsupportedDevices)
+              .map((String desc) => desc)
+              .toList(),
+          '\n',
+        );
+        result.writeln('');
+        result.writeln(userMessages.flutterMissPlatformProjects(
+          Device.devicesPlatformTypes(unsupportedDevices),
+        ));
+        globals.printStatus(result.toString());
+      }
       return null;
     } else if (devices.length > 1 && !deviceManager.hasSpecifiedAllDevices) {
       if (deviceManager.hasSpecifiedDeviceId) {
-        printStatus(userMessages.flutterFoundSpecifiedDevices(devices.length, deviceManager.specifiedDeviceId));
+       globals.printStatus(userMessages.flutterFoundSpecifiedDevices(devices.length, deviceManager.specifiedDeviceId));
       } else {
-        printStatus(userMessages.flutterSpecifyDeviceWithAllOption);
-        devices = await deviceManager.getAllConnectedDevices().toList();
+        globals.printStatus(userMessages.flutterSpecifyDeviceWithAllOption);
+        devices = await deviceManager.getAllConnectedDevices();
       }
-      printStatus('');
+      globals.printStatus('');
       await Device.printDevices(devices);
       return null;
     }
@@ -682,9 +1045,9 @@ abstract class FlutterCommand extends Command<void> {
       return null;
     }
     if (deviceList.length > 1) {
-      printStatus(userMessages.flutterSpecifyDevice);
-      deviceList = await deviceManager.getAllConnectedDevices().toList();
-      printStatus('');
+      globals.printStatus(userMessages.flutterSpecifyDevice);
+      deviceList = await globals.deviceManager.getAllConnectedDevices();
+      globals.printStatus('');
       await Device.printDevices(deviceList);
       return null;
     }
@@ -694,27 +1057,50 @@ abstract class FlutterCommand extends Command<void> {
   @protected
   @mustCallSuper
   Future<void> validateCommand() async {
-    if (_requiresPubspecYaml && !PackageMap.isUsingCustomPackagesPath) {
+    if (_requiresPubspecYaml && !isUsingCustomPackagesPath) {
       // Don't expect a pubspec.yaml file if the user passed in an explicit .packages file path.
-      if (!fs.isFileSync('pubspec.yaml')) {
-        throw ToolExit(userMessages.flutterNoPubspec);
-      }
 
-      // Validate the current package map only if we will not be running "pub get" later.
-      if (parent?.name != 'pub' && !(_usesPubOption && boolArg('pub'))) {
-        final String error = PackageMap(PackageMap.globalPackagesPath).checkValid();
-        if (error != null) {
-          throw ToolExit(error);
+      // If there is no pubspec in the current directory, look in the parent
+      // until one can be found.
+      bool changedDirectory = false;
+      while (!globals.fs.isFileSync('pubspec.yaml')) {
+        final Directory nextCurrent = globals.fs.currentDirectory.parent;
+        if (nextCurrent == null || nextCurrent.path == globals.fs.currentDirectory.path) {
+          throw ToolExit(userMessages.flutterNoPubspec);
         }
+        globals.fs.currentDirectory = nextCurrent;
+        changedDirectory = true;
+      }
+      if (changedDirectory) {
+        globals.printStatus('Changing current working directory to: ${globals.fs.currentDirectory.path}');
       }
     }
 
     if (_usesTargetOption) {
       final String targetPath = targetFile;
-      if (!fs.isFileSync(targetPath)) {
+      if (!globals.fs.isFileSync(targetPath)) {
         throw ToolExit(userMessages.flutterTargetFileMissing(targetPath));
       }
     }
+  }
+
+  @override
+  String get usage {
+    final String usageWithoutDescription = super.usage.substring(
+      // The description plus two newlines.
+      description.length + 2,
+    );
+    final String help = <String>[
+      if (deprecated)
+        '$warningMark Deprecated. This command will be removed in a future version of Flutter.',
+      description,
+      '',
+      'Global options:',
+      runner.argParser.usage,
+      '',
+      usageWithoutDescription,
+    ].join('\n');
+    return help;
   }
 
   ApplicationPackageStore applicationPackages;
@@ -737,14 +1123,14 @@ mixin DeviceBasedDevelopmentArtifacts on FlutterCommand {
     // If there are no attached devices, use the default configuration.
     // Otherwise, only add development artifacts which correspond to a
     // connected device.
-    final List<Device> devices = await deviceManager.getDevices().toList();
+    final List<Device> devices = await globals.deviceManager.getDevices();
     if (devices.isEmpty) {
       return super.requiredArtifacts;
     }
     final Set<DevelopmentArtifact> artifacts = <DevelopmentArtifact>{
       DevelopmentArtifact.universal,
     };
-    for (Device device in devices) {
+    for (final Device device in devices) {
       final TargetPlatform targetPlatform = await device.targetPlatform;
       final DevelopmentArtifact developmentArtifact = _artifactFromTargetPlatform(targetPlatform);
       if (developmentArtifact != null) {
@@ -815,14 +1201,5 @@ DevelopmentArtifact _artifactFromTargetPlatform(TargetPlatform targetPlatform) {
   return null;
 }
 
-/// A command which runs less analytics and checks to speed up startup time.
-abstract class FastFlutterCommand extends FlutterCommand {
-  @override
-  Future<void> run() {
-    return context.run<void>(
-      name: 'command',
-      overrides: <Type, Generator>{FlutterCommand: () => this},
-      body: runCommand,
-    );
-  }
-}
+/// Returns true if s is either null, empty or is solely made of whitespace characters (as defined by String.trim).
+bool _isBlank(String s) => s == null || s.trim().isEmpty;

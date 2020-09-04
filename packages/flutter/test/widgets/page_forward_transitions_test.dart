@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -19,7 +21,7 @@ class TestTransition extends AnimatedWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Animation<double> animation = listenable;
+    final Animation<double> animation = listenable as Animation<double>;
     if (animation.value >= 0.5)
       return childSecondHalf;
     return childFirstHalf;
@@ -86,7 +88,7 @@ void main() {
                 child: Builder(
                   key: insideKey,
                   builder: (BuildContext context) {
-                    final PageRoute<void> route = ModalRoute.of(context);
+                    final PageRoute<void> route = ModalRoute.of(context) as PageRoute<void>;
                     return Column(
                       children: <Widget>[
                         TestTransition(

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 part of material_animated_icons;
 
 // The code for drawing animated icons is kept in a private API, as we are not
@@ -18,7 +20,7 @@ part of material_animated_icons;
 ///
 /// {@youtube 560 315 https://www.youtube.com/watch?v=pJcbh8pbvJs}
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// ```dart
 /// AnimatedIcon(
@@ -88,8 +90,8 @@ class AnimatedIcon extends StatelessWidget {
   ///
   /// See also:
   ///
-  ///  * [Semantics.label], which is set to [semanticLabel] in the underlying
-  ///    [Semantics] widget.
+  ///  * [SemanticsProperties.label], which is set to [semanticLabel] in the
+  ///    underlying [Semantics] widget.
   final String semanticLabel;
 
   /// The text direction to use for rendering the icon.
@@ -162,7 +164,7 @@ class _AnimatedIconPainter extends CustomPainter {
     }
 
     final double clampedProgress = progress.value.clamp(0.0, 1.0) as double;
-    for (_PathFrames path in paths)
+    for (final _PathFrames path in paths)
       path.paint(canvas, color, uiPathFactory, clampedProgress);
   }
 
@@ -203,7 +205,7 @@ class _PathFrames {
       ..style = PaintingStyle.fill
       ..color = color.withOpacity(color.opacity * opacity);
     final ui.Path path = uiPathFactory();
-    for (_PathCommand command in commands)
+    for (final _PathCommand command in commands)
       command.apply(path, progress);
     canvas.drawPath(path, paint);
   }

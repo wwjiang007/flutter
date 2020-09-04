@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -10,10 +12,13 @@ import 'expand_icon.dart';
 import 'ink_well.dart';
 import 'material_localizations.dart';
 import 'mergeable_material.dart';
+import 'shadows.dart';
 import 'theme.dart';
 
 const double _kPanelHeaderCollapsedHeight = kMinInteractiveDimension;
-const double _kPanelHeaderExpandedHeight = 64.0;
+const EdgeInsets _kPanelHeaderExpandedDefaultPadding = EdgeInsets.symmetric(
+    vertical: 64.0 - _kPanelHeaderCollapsedHeight
+);
 
 class _SaltedKey<S, V> extends LocalKey {
   const _SaltedKey(this.salt, this.value);
@@ -22,7 +27,7 @@ class _SaltedKey<S, V> extends LocalKey {
   final V value;
 
   @override
-  bool operator ==(dynamic other) {
+  bool operator ==(Object other) {
     if (other.runtimeType != runtimeType)
       return false;
     return other is _SaltedKey<S, V>
@@ -35,8 +40,8 @@ class _SaltedKey<S, V> extends LocalKey {
 
   @override
   String toString() {
-    final String saltString = S == String ? '<\'$salt\'>' : '<$salt>';
-    final String valueString = V == String ? '<\'$value\'>' : '<$value>';
+    final String saltString = S == String ? "<'$salt'>" : '<$salt>';
+    final String valueString = V == String ? "<'$value'>" : '<$value>';
     return '[$saltString $valueString]';
   }
 }
@@ -138,7 +143,7 @@ class ExpansionPanelRadio extends ExpansionPanel {
 /// Note that [expansionCallback] behaves differently for [ExpansionPanelList]
 /// and [ExpansionPanelList.radio].
 ///
-/// {@tool snippet --template=stateful_widget_scaffold}
+/// {@tool dartpad --template=stateful_widget_scaffold}
 ///
 /// Here is a simple example of how to implement ExpansionPanelList.
 ///
@@ -225,6 +230,9 @@ class ExpansionPanelList extends StatefulWidget {
     this.children = const <ExpansionPanel>[],
     this.expansionCallback,
     this.animationDuration = kThemeAnimationDuration,
+    this.expandedHeaderPadding = _kPanelHeaderExpandedDefaultPadding,
+    this.dividerColor,
+    this.elevation = 2,
   }) : assert(children != null),
        assert(animationDuration != null),
        _allowOnlyOnePanelOpen = false,
@@ -239,7 +247,7 @@ class ExpansionPanelList extends StatefulWidget {
   /// arguments must not be null. The [children] objects must be instances
   /// of [ExpansionPanelRadio].
   ///
-  /// {@tool snippet --template=stateful_widget_scaffold}
+  /// {@tool dartpad --template=stateful_widget_scaffold}
   ///
   /// Here is a simple example of how to implement ExpansionPanelList.radio.
   ///
@@ -313,6 +321,9 @@ class ExpansionPanelList extends StatefulWidget {
     this.expansionCallback,
     this.animationDuration = kThemeAnimationDuration,
     this.initialOpenPanelValue,
+    this.expandedHeaderPadding = _kPanelHeaderExpandedDefaultPadding,
+    this.dividerColor,
+    this.elevation = 2,
   }) : assert(children != null),
        assert(animationDuration != null),
        _allowOnlyOnePanelOpen = true,
@@ -350,6 +361,29 @@ class ExpansionPanelList extends StatefulWidget {
   /// only used when initializing with the [ExpansionPanelList.radio]
   /// constructor.)
   final Object initialOpenPanelValue;
+
+  /// The padding that surrounds the panel header when expanded.
+  ///
+  /// By default, 16px of space is added to the header vertically (above and below)
+  /// during expansion.
+  final EdgeInsets expandedHeaderPadding;
+
+  /// Defines color for the divider when [ExpansionPanel.isExpanded] is false.
+  ///
+  /// If `dividerColor` is null, then [DividerThemeData.color] is used. If that
+  /// is null, then [ThemeData.dividerColor] is used.
+  final Color dividerColor;
+
+  /// Defines elevation for the [ExpansionPanel] while it's expanded.
+  ///
+  /// This uses [kElevationToShadow] to simulate shadows, it does not use
+  /// [Material]'s arbitrary elevation feature.
+  ///
+  /// The following values can be used to define the elevation: 0, 1, 2, 3, 4, 6,
+  /// 8, 9, 12, 16, 24.
+  ///
+  /// By default, the value of elevation is 2.
+  final int elevation;
 
   @override
   State<StatefulWidget> createState() => _ExpansionPanelListState();
@@ -389,7 +423,7 @@ class _ExpansionPanelListState extends State<ExpansionPanelList> {
 
   bool _allIdentifiersUnique() {
     final Map<Object, bool> identifierMap = <Object, bool>{};
-    for (ExpansionPanelRadio child in widget.children.cast<ExpansionPanelRadio>()) {
+    for (final ExpansionPanelRadio child in widget.children.cast<ExpansionPanelRadio>()) {
       identifierMap[child.value] = true;
     }
     return identifierMap.length == widget.children.length;
@@ -427,7 +461,7 @@ class _ExpansionPanelListState extends State<ExpansionPanelList> {
   }
 
   ExpansionPanelRadio searchPanelByValue(List<ExpansionPanelRadio> panels, Object value)  {
-    for (ExpansionPanelRadio panel in panels) {
+    for (final ExpansionPanelRadio panel in panels) {
       if (panel.value == value)
         return panel;
     }
@@ -436,10 +470,12 @@ class _ExpansionPanelListState extends State<ExpansionPanelList> {
 
   @override
   Widget build(BuildContext context) {
-    final List<MergeableMaterialItem> items = <MergeableMaterialItem>[];
-    const EdgeInsets kExpandedEdgeInsets = EdgeInsets.symmetric(
-      vertical: _kPanelHeaderExpandedHeight - _kPanelHeaderCollapsedHeight
+    assert(kElevationToShadow.containsKey(widget.elevation),
+      'Invalid value for elevation. See the kElevationToShadow constant for'
+      ' possible elevation values.'
     );
+
+    final List<MergeableMaterialItem> items = <MergeableMaterialItem>[];
 
     for (int index = 0; index < widget.children.length; index += 1) {
       if (_isChildExpanded(index) && index != 0 && !_isChildExpanded(index - 1))
@@ -475,7 +511,7 @@ class _ExpansionPanelListState extends State<ExpansionPanelList> {
             child: AnimatedContainer(
               duration: widget.animationDuration,
               curve: Curves.fastOutSlowIn,
-              margin: _isChildExpanded(index) ? kExpandedEdgeInsets : EdgeInsets.zero,
+              margin: _isChildExpanded(index) ? widget.expandedHeaderPadding : EdgeInsets.zero,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: _kPanelHeaderCollapsedHeight),
                 child: headerWidget,
@@ -519,6 +555,8 @@ class _ExpansionPanelListState extends State<ExpansionPanelList> {
 
     return MergeableMaterial(
       hasDividers: true,
+      dividerColor: widget.dividerColor,
+      elevation: widget.elevation,
       children: items,
     );
   }

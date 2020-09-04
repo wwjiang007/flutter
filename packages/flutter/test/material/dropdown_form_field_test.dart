@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math' as math;
 import 'dart:ui' show window;
 
@@ -13,6 +15,10 @@ import '../rendering/mock_canvas.dart';
 
 const List<String> menuItems = <String>['one', 'two', 'three', 'four'];
 final ValueChanged<String> onChanged = (_) { };
+final Type dropdownButtonType = DropdownButton<String>(
+  onChanged: (_) { },
+  items: const <DropdownMenuItem<String>>[],
+).runtimeType;
 
 Finder _iconRichText(Key iconKey) {
   return find.descendant(
@@ -23,15 +29,16 @@ Finder _iconRichText(Key iconKey) {
 
 Widget buildFormFrame({
   Key buttonKey,
-  bool autovalidate = false,
+  AutovalidateMode autovalidateMode = AutovalidateMode.disabled,
   int elevation = 8,
   String value = 'two',
   ValueChanged<String> onChanged,
+  VoidCallback onTap,
   Widget icon,
   Color iconDisabledColor,
   Color iconEnabledColor,
   double iconSize = 24.0,
-  bool isDense = false,
+  bool isDense = true,
   bool isExpanded = false,
   Widget hint,
   Widget disabledHint,
@@ -48,12 +55,13 @@ Widget buildFormFrame({
         child: RepaintBoundary(
           child: DropdownButtonFormField<String>(
             key: buttonKey,
-            autovalidate: autovalidate,
+            autovalidateMode: autovalidateMode,
             elevation: elevation,
             value: value,
             hint: hint,
             disabledHint: disabledHint,
             onChanged: onChanged,
+            onTap: onTap,
             icon: icon,
             iconSize: iconSize,
             iconDisabledColor: iconDisabledColor,
@@ -103,10 +111,17 @@ class _TestAppState extends State<TestApp> {
 }
 
 class TestApp extends StatefulWidget {
-  const TestApp({ this.textDirection, this.child, this.mediaSize });
+  const TestApp({
+    Key key,
+    this.textDirection,
+    this.child,
+    this.mediaSize,
+  }) : super(key: key);
+
   final TextDirection textDirection;
   final Widget child;
   final Size mediaSize;
+
   @override
   _TestAppState createState() => _TestAppState();
 }
@@ -165,7 +180,7 @@ void main() {
                   _validateCalled++;
                   return currentValue == null ? 'Must select value' : null;
                 },
-                autovalidate: true,
+                autovalidateMode: AutovalidateMode.always,
               ),
             ),
           );
@@ -227,7 +242,6 @@ void main() {
       buildFormFrame(
         buttonKey: buttonKey,
         value: value,
-        isDense: true,
         onChanged: onChanged,
       ),
     );
@@ -254,12 +268,41 @@ void main() {
     final double menuItemHeight = itemBoxesHeight.reduce(math.max);
     expect(menuItemHeight, greaterThanOrEqualTo(buttonBox.size.height));
 
-    for (RenderBox itemBox in itemBoxes) {
+    for (final RenderBox itemBox in itemBoxes) {
       expect(itemBox.attached, isTrue);
       final Offset buttonBoxCenter = buttonBox.size.center(buttonBox.localToGlobal(Offset.zero));
       final Offset itemBoxCenter = itemBox.size.center(itemBox.localToGlobal(Offset.zero));
       expect(buttonBoxCenter.dy, equals(itemBoxCenter.dy));
     }
+  });
+
+  testWidgets('DropdownButtonFormField.isDense is true by default', (WidgetTester tester) async {
+    // Regression test for https://github.com/flutter/flutter/issues/46844
+    final Key buttonKey = UniqueKey();
+    const String value = 'two';
+
+    await tester.pumpWidget(
+      TestApp(
+        textDirection: TextDirection.ltr,
+        child: Material(
+          child: DropdownButtonFormField<String>(
+            key: buttonKey,
+            value: value,
+            onChanged: onChanged,
+            items: menuItems.map<DropdownMenuItem<String>>((String item) {
+              return DropdownMenuItem<String>(
+                key: ValueKey<String>(item),
+                value: item,
+                child: Text(item, key: ValueKey<String>(item + 'Text')),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+
+    final RenderBox box = tester.renderObject<RenderBox>(find.byType(dropdownButtonType));
+    expect(box.size.height, 24.0);
   });
 
   testWidgets('DropdownButtonFormField - custom text style', (WidgetTester tester) async {
@@ -551,7 +594,7 @@ void main() {
     } on AssertionError catch (error) {
       expect(
         error.toString(),
-        contains('There should be exactly one item with [DropdownButton]\'s value'),
+        contains("There should be exactly one item with [DropdownButton]'s value"),
       );
     }
   });
@@ -582,7 +625,7 @@ void main() {
     } on AssertionError catch (error) {
       expect(
         error.toString(),
-        contains('There should be exactly one item with [DropdownButton]\'s value'),
+        contains("There should be exactly one item with [DropdownButton]'s value"),
       );
     }
   });
@@ -630,4 +673,147 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Two as an Arabic numeral: 2'), findsOneWidget);
   });
+
+  testWidgets('DropdownButton onTap callback is called when defined', (WidgetTester tester) async {
+    int dropdownButtonTapCounter = 0;
+    String value = 'one';
+    void onChanged(String newValue) { value = newValue; }
+    void onTap() { dropdownButtonTapCounter += 1; }
+
+    Widget build() => buildFormFrame(
+      value: value,
+      onChanged: onChanged,
+      onTap: onTap,
+    );
+    await tester.pumpWidget(build());
+
+    expect(dropdownButtonTapCounter, 0);
+
+    // Tap dropdown button.
+    await tester.tap(find.text('one'));
+    await tester.pumpAndSettle();
+
+    expect(value, equals('one'));
+    expect(dropdownButtonTapCounter, 1); // Should update counter.
+
+    // Tap dropdown menu item.
+    await tester.tap(find.text('three').last);
+    await tester.pumpAndSettle();
+
+    expect(value, equals('three'));
+    expect(dropdownButtonTapCounter, 1); // Should not change.
+
+    // Tap dropdown button again.
+    await tester.tap(find.text('three'));
+    await tester.pumpAndSettle();
+
+    expect(value, equals('three'));
+    expect(dropdownButtonTapCounter, 2); // Should update counter.
+
+    // Tap dropdown menu item.
+    await tester.tap(find.text('two').last);
+    await tester.pumpAndSettle();
+
+    expect(value, equals('two'));
+    expect(dropdownButtonTapCounter, 2); // Should not change.
+  });
+
+  testWidgets('DropdownButtonFormField should re-render if value param changes', (WidgetTester tester) async {
+    String currentValue = 'two';
+
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (BuildContext context, StateSetter setState) {
+          return MaterialApp(
+            home: Material(
+              child: DropdownButtonFormField<String>(
+                value: currentValue,
+                onChanged: onChanged,
+                items: menuItems.map((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                    onTap: () {
+                      setState(() {
+                        currentValue = value;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    // Make sure the rendered text value matches the initial state value.
+    expect(currentValue, equals('two'));
+    expect(find.text(currentValue), findsOneWidget);
+
+    // Tap the DropdownButtonFormField widget
+    await tester.tap(find.byType(dropdownButtonType));
+    await tester.pumpAndSettle();
+
+    // Tap the first dropdown menu item.
+    await tester.tap(find.text('one').last);
+    await tester.pumpAndSettle();
+
+    // Make sure the rendered text value matches the updated state value.
+    expect(currentValue, equals('one'));
+    expect(find.text(currentValue), findsOneWidget);
+  });
+
+  testWidgets('autovalidateMode is passed to super', (WidgetTester tester) async {
+    int _validateCalled = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Material(
+          child: Center(
+            child: DropdownButtonFormField<String>(
+              autovalidateMode: AutovalidateMode.always,
+              items: menuItems.map((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+              onChanged: onChanged,
+              validator: (String value) {
+                _validateCalled++;
+                return null;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(_validateCalled, 1);
+  });
+
+  testWidgets('autovalidateMode and autovalidate should not be used at the same time', (WidgetTester tester) async {
+    Widget builder() {
+      return MaterialApp(
+        home: Material(
+          child: Center(
+            child: DropdownButtonFormField<String>(
+              autovalidate: true,
+              autovalidateMode: AutovalidateMode.always,
+              items: menuItems.map((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      );
+    }
+    expect(() => builder(), throwsAssertionError);
+  });
+
 }

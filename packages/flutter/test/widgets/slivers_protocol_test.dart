@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,8 +12,8 @@ import 'package:flutter/widgets.dart';
 
 void verifyPaintPosition(GlobalKey key, Offset ideal) {
   final RenderObject target = key.currentContext.findRenderObject();
-  expect(target.parent, isInstanceOf<RenderViewport>());
-  final SliverPhysicalParentData parentData = target.parentData;
+  expect(target.parent, isA<RenderViewport>());
+  final SliverPhysicalParentData parentData = target.parentData as SliverPhysicalParentData;
   final Offset actual = parentData.paintOffset;
   expect(actual, ideal);
 }
@@ -55,7 +57,7 @@ void main() {
 
 class RenderBigSliver extends RenderSliver {
   static const double height = 550.0;
-  double get paintExtent => (height - constraints.scrollOffset).clamp(0.0, constraints.remainingPaintExtent);
+  double get paintExtent => (height - constraints.scrollOffset).clamp(0.0, constraints.remainingPaintExtent) as double;
 
   @override
   void performLayout() {
@@ -90,7 +92,7 @@ class RenderOverlappingSliver extends RenderSliver {
   }
 
   double get layoutExtent {
-    return (totalHeight - constraints.scrollOffset).clamp(0.0, constraints.remainingPaintExtent);
+    return (totalHeight - constraints.scrollOffset).clamp(0.0, constraints.remainingPaintExtent) as double;
   }
 
   @override

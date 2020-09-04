@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math';
 import 'dart:ui';
 
@@ -312,14 +314,14 @@ void main() {
             children: <Widget>[
               Semantics(
                 value: 'value one',
-                child: Container(
+                child: const SizedBox(
                   height: 10.0,
                   width: 10.0,
                 ),
               ),
               Semantics(
                 value: 'value two',
-                child: Container(
+                child: const SizedBox(
                   height: 10.0,
                   width: 10.0,
                 ),
@@ -436,7 +438,7 @@ void main() {
     // Do the actions work?
     final SemanticsOwner semanticsOwner = tester.binding.pipelineOwner.semanticsOwner;
     int expectedLength = 1;
-    for (SemanticsAction action in allActions) {
+    for (final SemanticsAction action in allActions) {
       switch (action) {
         case SemanticsAction.moveCursorBackwardByCharacter:
         case SemanticsAction.moveCursorForwardByCharacter:
@@ -540,7 +542,7 @@ void main() {
 
     expect(semantics, hasSemantics(expectedSemantics, ignoreId: true));
     semantics.dispose();
-  }, skip: isBrowser);
+  }, skip: true); // TODO(abrusher): Enable once engine PR #20385 lands.
 
   testWidgets('Actions can be replaced without triggering semantics update', (WidgetTester tester) async {
     final SemanticsTester semantics = SemanticsTester(tester);

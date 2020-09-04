@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
@@ -85,11 +87,24 @@ class _TableElementRow {
 /// have one column, the [SliverList] or [Column] widgets will be more
 /// appropriate.
 ///
-/// Rows size vertically based on their contents. To control the column widths,
-/// use the [columnWidths] property.
+/// Rows size vertically based on their contents. To control the individual
+/// column widths, use the [columnWidths] property to specify a
+/// [TableColumnWidth] for each column. If [columnWidths] is null, or there is a
+/// null entry for a given column in [columnWidths], the table uses the
+/// [defaultColumnWidth] instead.
+///
+/// By default, [defaultColumnWidth] is a [FlexColumnWidth]. This
+/// [TableColumnWidth] divides up the remaining space in the horizontal axis to
+/// determine the column width. If wrapping a [Table] in a horizontal
+/// [ScrollView], choose a different [TableColumnWidth], such as
+/// [FixedColumnWidth].
 ///
 /// For more details about the table layout algorithm, see [RenderTable].
 /// To control the alignment of children, see [TableCell].
+///
+/// See also:
+///
+///  * The [catalog of layout widgets](https://flutter.dev/widgets/layout/).
 class Table extends RenderObjectWidget {
   /// Creates a table.
   ///
@@ -103,10 +118,19 @@ class Table extends RenderObjectWidget {
     this.textDirection,
     this.border,
     this.defaultVerticalAlignment = TableCellVerticalAlignment.top,
-    this.textBaseline,
+    this.textBaseline = TextBaseline.alphabetic,
   }) : assert(children != null),
        assert(defaultColumnWidth != null),
        assert(defaultVerticalAlignment != null),
+       assert(() {
+         if (children.any((TableRow row) => row.children == null)) {
+           throw FlutterError(
+             'One of the rows of the table had null children.\n'
+             'The children property of TableRow must not be null.'
+           );
+         }
+         return true;
+       }()),
        assert(() {
          if (children.any((TableRow row) => row.children.any((Widget cell) => cell == null))) {
            throw FlutterError(
@@ -175,12 +199,22 @@ class Table extends RenderObjectWidget {
   /// sizing algorithms are used here. In particular, [IntrinsicColumnWidth] is
   /// quite expensive because it needs to measure each cell in the column to
   /// determine the intrinsic size of the column.
-  final Map<int, TableColumnWidth> columnWidths;
+  ///
+  /// The keys of this map (column indexes) are zero-based.
+  ///
+  /// If this is set to null, then an empty map is assumed.
+  final Map<int, TableColumnWidth>/*?*/ columnWidths;
 
-  /// How to determine with widths of columns that don't have an explicit sizing algorithm.
+  /// How to determine with widths of columns that don't have an explicit sizing
+  /// algorithm.
   ///
   /// Specifically, the [defaultColumnWidth] is used for column `i` if
-  /// `columnWidths[i]` is null.
+  /// `columnWidths[i]` is null. Defaults to [FlexColumnWidth], which will
+  /// divide the remaining horizontal space up evenly between columns of the
+  /// same type [TableColumnWidth].
+  ///
+  /// A [Table] in a horizontal [ScrollView] must use a [FixedColumnWidth], or
+  /// an [IntrinsicColumnWidth] as the horizontal space is infinite.
   final TableColumnWidth defaultColumnWidth;
 
   /// The direction in which the columns are ordered.
@@ -192,9 +226,14 @@ class Table extends RenderObjectWidget {
   final TableBorder border;
 
   /// How cells that do not explicitly specify a vertical alignment are aligned vertically.
+  ///
+  /// Cells may specify a vertical alignment by wrapping their contents in a
+  /// [TableCell] widget.
   final TableCellVerticalAlignment defaultVerticalAlignment;
 
   /// The text baseline to use when aligning rows using [TableCellVerticalAlignment.baseline].
+  ///
+  /// Defaults to [TextBaseline.alphabetic].
   final TextBaseline textBaseline;
 
   final List<Decoration> _rowDecorations;
@@ -266,16 +305,16 @@ class _TableElement extends RenderObjectElement {
   }
 
   @override
-  void insertChildRenderObject(RenderObject child, Element slot) {
+  void insertRenderObjectChild(RenderObject child, IndexedSlot<Element> slot) {
     renderObject.setupParentData(child);
   }
 
   @override
-  void moveChildRenderObject(RenderObject child, dynamic slot) {
+  void moveRenderObjectChild(RenderObject child, IndexedSlot<Element> oldSlot, IndexedSlot<Element> newSlot) {
   }
 
   @override
-  void removeChildRenderObject(RenderObject child) {
+  void removeRenderObjectChild(RenderObject child, IndexedSlot<Element> slot) {
     final TableCellParentData childParentData = child.parentData as TableCellParentData;
     renderObject.setChild(childParentData.x, childParentData.y, null);
   }
@@ -285,7 +324,7 @@ class _TableElement extends RenderObjectElement {
   @override
   void update(Table newWidget) {
     final Map<LocalKey, List<Element>> oldKeyedRows = <LocalKey, List<Element>>{};
-    for (_TableElementRow row in _children) {
+    for (final _TableElementRow row in _children) {
       if (row.key != null) {
         oldKeyedRows[row.key] = row.children;
       }
@@ -293,7 +332,7 @@ class _TableElement extends RenderObjectElement {
     final Iterator<_TableElementRow> oldUnkeyedRows = _children.where((_TableElementRow row) => row.key == null).iterator;
     final List<_TableElementRow> newChildren = <_TableElementRow>[];
     final Set<List<Element>> taken = <List<Element>>{};
-    for (TableRow row in newWidget.children) {
+    for (final TableRow row in newWidget.children) {
       List<Element> oldChildren;
       if (row.key != null && oldKeyedRows.containsKey(row.key)) {
         oldChildren = oldKeyedRows[row.key];
@@ -310,7 +349,7 @@ class _TableElement extends RenderObjectElement {
     }
     while (oldUnkeyedRows.moveNext())
       updateChildren(oldUnkeyedRows.current.children, const <Widget>[], forgottenChildren: _forgottenChildren);
-    for (List<Element> oldChildren in oldKeyedRows.values.where((List<Element> list) => !taken.contains(list)))
+    for (final List<Element> oldChildren in oldKeyedRows.values.where((List<Element> list) => !taken.contains(list)))
       updateChildren(oldChildren, const <Widget>[], forgottenChildren: _forgottenChildren);
 
     _children = newChildren;
@@ -335,7 +374,7 @@ class _TableElement extends RenderObjectElement {
 
   @override
   void visitChildren(ElementVisitor visitor) {
-    for (Element child in _children.expand<Element>((_TableElementRow row) => row.children)) {
+    for (final Element child in _children.expand<Element>((_TableElementRow row) => row.children)) {
       if (!_forgottenChildren.contains(child))
         visitor(child);
     }
@@ -344,6 +383,7 @@ class _TableElement extends RenderObjectElement {
   @override
   bool forgetChild(Element child) {
     _forgottenChildren.add(child);
+    super.forgetChild(child);
     return true;
   }
 }
@@ -354,7 +394,7 @@ class _TableElement extends RenderObjectElement {
 /// the [TableCell] widget to its enclosing [Table] must contain only
 /// [TableRow]s, [StatelessWidget]s, or [StatefulWidget]s (not
 /// other kinds of widgets, like [RenderObjectWidget]s).
-class TableCell extends ParentDataWidget<Table> {
+class TableCell extends ParentDataWidget<TableCellParentData> {
   /// Creates a widget that controls how a child of a [Table] is aligned.
   const TableCell({
     Key key,
@@ -375,6 +415,9 @@ class TableCell extends ParentDataWidget<Table> {
         targetParent.markNeedsLayout();
     }
   }
+
+  @override
+  Type get debugTypicalAncestorWidgetClass => Table;
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {

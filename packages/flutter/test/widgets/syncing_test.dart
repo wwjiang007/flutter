@@ -2,11 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
 
 class TestWidget extends StatefulWidget {
-  const TestWidget({ this.child, this.persistentState, this.syncedState });
+  const TestWidget({
+    Key key,
+    this.child,
+    this.persistentState,
+    this.syncedState,
+  }) : super(key: key);
 
   final Widget child;
   final int persistentState;

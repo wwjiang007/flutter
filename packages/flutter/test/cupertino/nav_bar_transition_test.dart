@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,7 +53,7 @@ Future<void> startTransitionBetween(
 CupertinoPageScaffold scaffoldForNavBar(Widget navBar) {
   if (navBar is CupertinoNavigationBar || navBar == null) {
     return CupertinoPageScaffold(
-      navigationBar: navBar ?? const CupertinoNavigationBar(),
+      navigationBar: navBar as CupertinoNavigationBar ?? const CupertinoNavigationBar(),
       child: const Placeholder(),
     );
   } else if (navBar is CupertinoSliverNavigationBar) {
@@ -72,12 +74,9 @@ CupertinoPageScaffold scaffoldForNavBar(Widget navBar) {
 }
 
 Finder flying(WidgetTester tester, Finder finder) {
-  final RenderObjectWithChildMixin<RenderStack> theater =
-      tester.renderObject(find.byType(Overlay));
-  final RenderStack theaterStack = theater.child;
+  final ContainerRenderObjectMixin<RenderBox, StackParentData> theater = tester.renderObject(find.byType(Overlay));
   final Finder lastOverlayFinder = find.byElementPredicate((Element element) {
-    return element is RenderObjectElement &&
-        element.renderObject == theaterStack.lastChild;
+    return element is RenderObjectElement && element.renderObject == theater.lastChild;
   });
 
   assert(
@@ -935,7 +934,7 @@ void main() {
     expect(bottomLargeTitle.text.style.color, const Color(0xff00050a));
     expect(bottomLargeTitle.text.style.fontWeight, FontWeight.w700);
     expect(bottomLargeTitle.text.style.fontFamily, '.SF Pro Display');
-    expect(bottomLargeTitle.text.style.letterSpacing, 0.374765625);
+    expect(bottomLargeTitle.text.style.letterSpacing, moreOrLessEquals(0.374765625));
 
     // The top back label is styled exactly the same way.
     final RenderParagraph topBackLabel =
@@ -943,19 +942,19 @@ void main() {
     expect(topBackLabel.text.style.color, const Color(0xff00050a));
     expect(topBackLabel.text.style.fontWeight, FontWeight.w700);
     expect(topBackLabel.text.style.fontFamily, '.SF Pro Display');
-    expect(topBackLabel.text.style.letterSpacing, 0.374765625);
+    expect(topBackLabel.text.style.letterSpacing, moreOrLessEquals(0.374765625));
 
     // Move animation further a bit.
     await tester.pump(const Duration(milliseconds: 200));
     expect(bottomLargeTitle.text.style.color, const Color(0xff006de4));
     expect(bottomLargeTitle.text.style.fontWeight, FontWeight.w400);
     expect(bottomLargeTitle.text.style.fontFamily, '.SF Pro Text');
-    expect(bottomLargeTitle.text.style.letterSpacing, -0.32379547566175454);
+    expect(bottomLargeTitle.text.style.letterSpacing, moreOrLessEquals(-0.32379547566175454));
 
     expect(topBackLabel.text.style.color, const Color(0xff006de4));
     expect(topBackLabel.text.style.fontWeight, FontWeight.w400);
     expect(topBackLabel.text.style.fontFamily, '.SF Pro Text');
-    expect(topBackLabel.text.style.letterSpacing, -0.32379547566175454);
+    expect(topBackLabel.text.style.letterSpacing, moreOrLessEquals(-0.32379547566175454));
   });
 
   testWidgets('Top middle fades in and slides in from the right', (WidgetTester tester) async {

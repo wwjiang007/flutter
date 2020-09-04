@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -104,7 +105,7 @@ class FittedSizes {
 /// convenience function, [Alignment.inscribe], for resolving the sizes to
 /// rects, as shown in the example below.
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// This function paints a [dart:ui.Image] `image` onto the [Rect] `outputRect` on a
 /// [Canvas] `canvas`, using a [Paint] `paint`, applying the [BoxFit] algorithm

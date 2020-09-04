@@ -2,13 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('applyGrowthDirectionToAxisDirection produces expected AxisDirection', () {
     expect(AxisDirection.values.length, 4);
-    for (AxisDirection axisDirection in AxisDirection.values) {
+    for (final AxisDirection axisDirection in AxisDirection.values) {
       expect(applyGrowthDirectionToAxisDirection(axisDirection, GrowthDirection.forward), axisDirection);
     }
     expect(applyGrowthDirectionToAxisDirection(AxisDirection.up, GrowthDirection.reverse), AxisDirection.down);

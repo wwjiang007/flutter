@@ -13,10 +13,22 @@ Future<void> main() async {
   await task(() async {
     final TaskResult withoutSemantics = await createGalleryTransitionTest()();
     final TaskResult withSemantics = await createGalleryTransitionTest(semanticsEnabled: true)();
+    if (withSemantics.benchmarkScoreKeys.isEmpty || withoutSemantics.benchmarkScoreKeys.isEmpty) {
+      String message = 'Lack of data';
+      if (withSemantics.benchmarkScoreKeys.isEmpty) {
+        message += ' for test with semantics';
+        if (withoutSemantics.benchmarkScoreKeys.isEmpty) {
+          message += ' and without semantics';
+        }
+      } else {
+        message += 'for test without semantics';
+      }
+      return TaskResult.failure(message);
+    }
 
     final List<String> benchmarkScoreKeys = <String>[];
     final Map<String, dynamic> data = <String, dynamic>{};
-    for (String key in withSemantics.benchmarkScoreKeys) {
+    for (final String key in withSemantics.benchmarkScoreKeys) {
       final String deltaKey = 'delta_$key';
       data[deltaKey] = withSemantics.data[key] - withoutSemantics.data[key];
       data['semantics_$key'] = withSemantics.data[key];

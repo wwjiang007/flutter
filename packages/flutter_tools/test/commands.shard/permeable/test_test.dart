@@ -5,10 +5,11 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_tools/src/artifacts.dart';
 import 'package:flutter_tools/src/base/file_system.dart';
 import 'package:flutter_tools/src/base/io.dart';
 import 'package:flutter_tools/src/cache.dart';
-import 'package:flutter_tools/src/dart/sdk.dart';
+import 'package:flutter_tools/src/globals.dart' as globals;
 
 import '../../src/common.dart';
 import '../../src/context.dart';
@@ -18,8 +19,8 @@ import '../../src/context.dart';
 Future<void> _testExclusionLock;
 
 void main() {
-  final String automatedTestsDirectory = fs.path.join('..', '..', 'dev', 'automated_tests');
-  final String flutterTestDirectory = fs.path.join(automatedTestsDirectory, 'flutter_test');
+  final String automatedTestsDirectory = globals.fs.path.join('..', '..', 'dev', 'automated_tests');
+  final String flutterTestDirectory = globals.fs.path.join(automatedTestsDirectory, 'flutter_test');
 
   testUsingContext('flutter test should not have extraneous error messages', () async {
     Cache.flutterRoot = '../..';
@@ -47,7 +48,7 @@ void main() {
   });
 
   testUsingContext('flutter test should report a nice error when a pubspec.yaml is missing a flutter_test dependency', () async {
-    final String missingDependencyTests = fs.path.join('..', '..', 'dev', 'missing_dependency_tests');
+    final String missingDependencyTests = globals.fs.path.join('..', '..', 'dev', 'missing_dependency_tests');
     Cache.flutterRoot = '../..';
     return _testFile('trivial', missingDependencyTests, missingDependencyTests);
   });
@@ -95,6 +96,64 @@ void main() {
     expect(result.exitCode, 0);
   });
 
+  testUsingContext('flutter test should run a test with a given tag', () async {
+    Cache.flutterRoot = '../..';
+    final ProcessResult result = await _runFlutterTest('filtering_tag', automatedTestsDirectory, flutterTestDirectory,
+        extraArguments: const <String>['--tags', 'include-tag']);
+    if (!(result.stdout as String).contains('+1: All tests passed')) {
+      fail('unexpected output from test:\n\n${result.stdout}\n-- end stdout --\n\n');
+    }
+    expect(result.exitCode, 0);
+  });
+
+  testUsingContext('flutter test should not run a test with excluded tag', () async {
+    Cache.flutterRoot = '../..';
+    final ProcessResult result = await _runFlutterTest('filtering_tag', automatedTestsDirectory, flutterTestDirectory,
+        extraArguments: const <String>['--exclude-tags', 'exclude-tag']);
+    if (!(result.stdout as String).contains('+1: All tests passed')) {
+      fail('unexpected output from test:\n\n${result.stdout}\n-- end stdout --\n\n');
+    }
+    expect(result.exitCode, 0);
+  });
+
+  testUsingContext('flutter test should run all tests when tags are unspecified', () async {
+    Cache.flutterRoot = '../..';
+    final ProcessResult result = await _runFlutterTest('filtering_tag', automatedTestsDirectory, flutterTestDirectory);
+    if (!(result.stdout as String).contains('+1 -1: Some tests failed')) {
+      fail('unexpected output from test:\n\n${result.stdout}\n-- end stdout --\n\n');
+    }
+    expect(result.exitCode, 1);
+  });
+
+  testUsingContext('flutter test should run a widgetTest with a given tag', () async {
+    Cache.flutterRoot = '../..';
+    final ProcessResult result = await _runFlutterTest('filtering_tag_widget', automatedTestsDirectory, flutterTestDirectory,
+        extraArguments: const <String>['--tags', 'include-tag']);
+    if (!(result.stdout as String).contains('+1: All tests passed')) {
+      fail('unexpected output from test:\n\n${result.stdout}\n-- end stdout --\n\n');
+    }
+    expect(result.exitCode, 0);
+  });
+
+  testUsingContext('flutter test should not run a widgetTest with excluded tag', () async {
+    Cache.flutterRoot = '../..';
+    final ProcessResult result = await _runFlutterTest('filtering_tag_widget', automatedTestsDirectory, flutterTestDirectory,
+        extraArguments: const <String>['--exclude-tags', 'exclude-tag']);
+    if (!(result.stdout as String).contains('+1: All tests passed')) {
+      fail('unexpected output from test:\n\n${result.stdout}\n-- end stdout --\n\n');
+    }
+    expect(result.exitCode, 0);
+  });
+
+  testUsingContext('flutter test should run all widgetTest when tags are unspecified', () async {
+    Cache.flutterRoot = '../..';
+    final ProcessResult result = await _runFlutterTest('filtering_tag_widget', automatedTestsDirectory, flutterTestDirectory);
+    if (!(result.stdout as String).contains('+1 -1: Some tests failed')) {
+      fail('unexpected output from test:\n\n${result.stdout}\n-- end stdout --\n\n');
+    }
+    expect(result.exitCode, 1);
+  });
+
   testUsingContext('flutter test should test runs to completion', () async {
     Cache.flutterRoot = '../..';
     final ProcessResult result = await _runFlutterTest('trivial', automatedTestsDirectory, flutterTestDirectory,
@@ -140,8 +199,8 @@ Future<void> _testFile(
   List<String> extraArguments = const <String>[],
 }) async {
   exitCode ??= isNonZero;
-  final String fullTestExpectation = fs.path.join(testDirectory, '${testName}_expectation.txt');
-  final File expectationFile = fs.file(fullTestExpectation);
+  final String fullTestExpectation = globals.fs.path.join(testDirectory, '${testName}_expectation.txt');
+  final File expectationFile = globals.fs.file(fullTestExpectation);
   if (!expectationFile.existsSync()) {
     fail('missing expectation file: $expectationFile');
   }
@@ -159,7 +218,7 @@ Future<void> _testFile(
 
   expect(exec.exitCode, exitCode);
   final List<String> output = (exec.stdout as String).split('\n');
-  if (output.first == 'Waiting for another flutter command to release the startup lock...') {
+  if (output.first.startsWith('Waiting for another flutter command to release the startup lock...')) {
     output.removeAt(0);
   }
   if (output.first.startsWith('Running "flutter pub get" in')) {
@@ -167,7 +226,7 @@ Future<void> _testFile(
   }
   output.add('<<stderr>>');
   output.addAll((exec.stderr as String).split('\n'));
-  final List<String> expectations = fs.file(fullTestExpectation).readAsLinesSync();
+  final List<String> expectations = globals.fs.file(fullTestExpectation).readAsLinesSync();
   bool allowSkip = false;
   int expectationLineNumber = 0;
   int outputLineNumber = 0;
@@ -229,24 +288,24 @@ Future<ProcessResult> _runFlutterTest(
   if (testName == null) {
     // Test everything in the directory.
     testPath = testDirectory;
-    final Directory directoryToTest = fs.directory(testPath);
+    final Directory directoryToTest = globals.fs.directory(testPath);
     if (!directoryToTest.existsSync()) {
       fail('missing test directory: $directoryToTest');
     }
   } else {
     // Test just a specific test file.
-    testPath = fs.path.join(testDirectory, '${testName}_test.dart');
-    final File testFile = fs.file(testPath);
+    testPath = globals.fs.path.join(testDirectory, '${testName}_test.dart');
+    final File testFile = globals.fs.file(testPath);
     if (!testFile.existsSync()) {
       fail('missing test file: $testFile');
     }
   }
 
   final List<String> args = <String>[
-    ...dartVmFlags,
-    fs.path.absolute(fs.path.join('bin', 'flutter_tools.dart')),
+    globals.fs.path.absolute(globals.fs.path.join('bin', 'flutter_tools.dart')),
     'test',
     '--no-color',
+    '--no-version-check',
     ...extraArguments,
     testPath,
   ];
@@ -259,7 +318,7 @@ Future<ProcessResult> _runFlutterTest(
   _testExclusionLock = testExclusionCompleter.future;
   try {
     return await Process.run(
-      fs.path.join(dartSdkPath, 'bin', 'dart'),
+      globals.artifacts.getArtifactPath(Artifact.engineDartBinary),
       args,
       workingDirectory: workingDirectory,
       stdoutEncoding: utf8,

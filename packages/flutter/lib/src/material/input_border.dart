@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
@@ -41,7 +43,7 @@ abstract class InputBorder extends ShapeBorder {
   /// No input border.
   ///
   /// Use this value with [InputDecoration.border] to specify that no border
-  /// should be drawn. The [InputDecoration.shrinkWrap] constructor sets
+  /// should be drawn. The [InputDecoration.collapsed] constructor sets
   /// its border to this value.
   static const InputBorder none = _NoInputBorder();
 
@@ -235,10 +237,10 @@ class UnderlineInputBorder extends InputBorder {
   }
 
   @override
-  bool operator ==(dynamic other) {
+  bool operator ==(Object other) {
     if (identical(this, other))
       return true;
-    if (runtimeType != other.runtimeType)
+    if (other.runtimeType != runtimeType)
       return false;
     return other is InputBorder
         && other.borderSide == borderSide;
@@ -492,10 +494,10 @@ class OutlineInputBorder extends InputBorder {
   }
 
   @override
-  bool operator ==(dynamic other) {
+  bool operator ==(Object other) {
     if (identical(this, other))
       return true;
-    if (runtimeType != other.runtimeType)
+    if (other.runtimeType != runtimeType)
       return false;
     return other is OutlineInputBorder
         && other.borderSide == borderSide

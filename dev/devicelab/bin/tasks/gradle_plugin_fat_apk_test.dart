@@ -51,6 +51,8 @@ Future<void> main() async {
           'lib/armeabi-v7a/libapp.so',
           'lib/arm64-v8a/libflutter.so',
           'lib/arm64-v8a/libapp.so',
+          'lib/x86_64/libflutter.so',
+          'lib/x86_64/libapp.so',
         ], apkFiles);
 
         checkCollectionDoesNotContain<String>(debugAssets, apkFiles);
@@ -127,7 +129,7 @@ Future<void> main() async {
 
           final String sharedLibrary = path.join(androidArmSnapshotPath, 'app.so');
           if (!File(sharedLibrary).existsSync()) {
-            throw TaskResult.failure('Shared library doesn\'t exist');
+            throw TaskResult.failure("Shared library doesn't exist");
           }
         }
       });

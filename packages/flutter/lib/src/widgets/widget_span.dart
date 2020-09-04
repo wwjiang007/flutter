@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:ui' as ui show ParagraphBuilder, PlaceholderAlignment;
 
 import 'package:flutter/painting.dart';
@@ -22,7 +24,7 @@ import 'framework.dart';
 /// To properly layout and paint the [child] widget, [WidgetSpan] should be
 /// passed into a [Text.rich] widget.
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// A card with `Hello World!` embedded inline within a TextSpan tree.
 ///
@@ -164,7 +166,7 @@ class WidgetSpan extends PlaceholderSpan {
   }
 
   @override
-  bool operator ==(dynamic other) {
+  bool operator ==(Object other) {
     if (identical(this, other))
       return true;
     if (other.runtimeType != runtimeType)

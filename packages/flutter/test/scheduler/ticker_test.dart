@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -33,7 +35,7 @@ void main() {
     }
     expect(error, isNotNull);
     expect(error.diagnostics.length, 3);
-    expect(error.diagnostics.last, isInstanceOf<DiagnosticsProperty<Ticker>>());
+    expect(error.diagnostics.last, isA<DiagnosticsProperty<Ticker>>());
     expect(
       error.toStringDeep(),
       startsWith(
@@ -94,7 +96,7 @@ void main() {
     Ticker ticker;
 
     void testFunction() {
-      ticker = Ticker(null);
+      ticker = Ticker((Duration _) { });
     }
 
     testFunction();

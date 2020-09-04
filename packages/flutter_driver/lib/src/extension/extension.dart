@@ -4,15 +4,14 @@
 
 import 'dart:async';
 
-import 'package:flutter/semantics.dart';
 import 'package:meta/meta.dart';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RendererBinding, SemanticsHandle;
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,12 +23,14 @@ import '../common/frame_sync.dart';
 import '../common/geometry.dart';
 import '../common/gesture.dart';
 import '../common/health.dart';
+import '../common/layer_tree.dart';
 import '../common/message.dart';
 import '../common/render_tree.dart';
 import '../common/request_data.dart';
 import '../common/semantics.dart';
 import '../common/text.dart';
 import '../common/wait.dart';
+import '_extension_io.dart' if (dart.library.html) '_extension_web.dart';
 import 'wait_conditions.dart';
 
 const String _extensionMethodName = 'driver';
@@ -41,7 +42,7 @@ const String _extensionMethod = 'ext.flutter.$_extensionMethodName';
 /// eventually completes to a string response.
 typedef DataHandler = Future<String> Function(String message);
 
-class _DriverBinding extends BindingBase with ServicesBinding, SchedulerBinding, GestureBinding, PaintingBinding, SemanticsBinding, RendererBinding, WidgetsBinding {
+class _DriverBinding extends BindingBase with SchedulerBinding, ServicesBinding, GestureBinding, PaintingBinding, SemanticsBinding, RendererBinding, WidgetsBinding {
   _DriverBinding(this._handler, this._silenceErrors);
 
   final DataHandler _handler;
@@ -55,6 +56,9 @@ class _DriverBinding extends BindingBase with ServicesBinding, SchedulerBinding,
       name: _extensionMethodName,
       callback: extension.call,
     );
+    if (kIsWeb) {
+      registerWebServiceExtension(extension.call);
+    }
   }
 
   @override
@@ -66,7 +70,11 @@ class _DriverBinding extends BindingBase with ServicesBinding, SchedulerBinding,
 /// Enables Flutter Driver VM service extension.
 ///
 /// This extension is required for tests that use `package:flutter_driver` to
-/// drive applications from a separate process.
+/// drive applications from a separate process. In order to allow the driver
+/// to interact with the application, this method changes the behavior of the
+/// framework in several ways - including keyboard interaction and text
+/// editing. Applications intended for release should never include this
+/// method.
 ///
 /// Call this function prior to running your application, e.g. before you call
 /// `runApp`.
@@ -107,6 +115,7 @@ class FlutterDriverExtension {
 
     _commandHandlers.addAll(<String, CommandHandlerCallback>{
       'get_health': _getHealth,
+      'get_layer_tree': _getLayerTree,
       'get_render_tree': _getRenderTree,
       'enter_text': _enterText,
       'get_text': _getText,
@@ -120,9 +129,9 @@ class FlutterDriverExtension {
       'waitFor': _waitFor,
       'waitForAbsent': _waitForAbsent,
       'waitForCondition': _waitForCondition,
-      'waitUntilNoTransientCallbacks': _waitUntilNoTransientCallbacks, // ignore: deprecated_member_use_from_same_package
-      'waitUntilNoPendingFrame': _waitUntilNoPendingFrame, // ignore: deprecated_member_use_from_same_package
-      'waitUntilFirstFrameRasterized': _waitUntilFirstFrameRasterized, // ignore: deprecated_member_use_from_same_package
+      'waitUntilNoTransientCallbacks': _waitUntilNoTransientCallbacks,
+      'waitUntilNoPendingFrame': _waitUntilNoPendingFrame,
+      'waitUntilFirstFrameRasterized': _waitUntilFirstFrameRasterized,
       'get_semantics_id': _getSemanticsId,
       'get_offset': _getOffset,
       'get_diagnostics_tree': _getDiagnosticsTree,
@@ -130,6 +139,7 @@ class FlutterDriverExtension {
 
     _commandDeserializers.addAll(<String, CommandDeserializerCallback>{
       'get_health': (Map<String, String> params) => GetHealth.deserialize(params),
+      'get_layer_tree': (Map<String, String> params) => GetLayerTree.deserialize(params),
       'get_render_tree': (Map<String, String> params) => GetRenderTree.deserialize(params),
       'enter_text': (Map<String, String> params) => EnterText.deserialize(params),
       'get_text': (Map<String, String> params) => GetText.deserialize(params),
@@ -143,9 +153,9 @@ class FlutterDriverExtension {
       'waitFor': (Map<String, String> params) => WaitFor.deserialize(params),
       'waitForAbsent': (Map<String, String> params) => WaitForAbsent.deserialize(params),
       'waitForCondition': (Map<String, String> params) => WaitForCondition.deserialize(params),
-      'waitUntilNoTransientCallbacks': (Map<String, String> params) => WaitUntilNoTransientCallbacks.deserialize(params), // ignore: deprecated_member_use_from_same_package
-      'waitUntilNoPendingFrame': (Map<String, String> params) => WaitUntilNoPendingFrame.deserialize(params), // ignore: deprecated_member_use_from_same_package
-      'waitUntilFirstFrameRasterized': (Map<String, String> params) => WaitUntilFirstFrameRasterized.deserialize(params), // ignore: deprecated_member_use_from_same_package
+      'waitUntilNoTransientCallbacks': (Map<String, String> params) => WaitUntilNoTransientCallbacks.deserialize(params),
+      'waitUntilNoPendingFrame': (Map<String, String> params) => WaitUntilNoPendingFrame.deserialize(params),
+      'waitUntilFirstFrameRasterized': (Map<String, String> params) => WaitUntilFirstFrameRasterized.deserialize(params),
       'get_semantics_id': (Map<String, String> params) => GetSemanticsId.deserialize(params),
       'get_offset': (Map<String, String> params) => GetOffset.deserialize(params),
       'get_diagnostics_tree': (Map<String, String> params) => GetDiagnosticsTree.deserialize(params),
@@ -228,6 +238,10 @@ class FlutterDriverExtension {
   }
 
   Future<Health> _getHealth(Command command) async => const Health(HealthStatus.ok);
+
+  Future<LayerTree> _getLayerTree(Command command) async {
+    return LayerTree(RendererBinding.instance?.renderView?.debugLayer?.toStringDeep());
+  }
 
   Future<RenderTree> _getRenderTree(Command command) async {
     return RenderTree(RendererBinding.instance?.renderView?.toStringDeep());
@@ -535,9 +549,30 @@ class FlutterDriverExtension {
   Future<GetTextResult> _getText(Command command) async {
     final GetText getTextCommand = command as GetText;
     final Finder target = await _waitForElement(_createFinder(getTextCommand.finder));
-    // TODO(yjbanov): support more ways to read text
-    final Text text = target.evaluate().single.widget as Text;
-    return GetTextResult(text.data);
+
+    final Widget widget = target.evaluate().single.widget;
+    String text;
+
+    if (widget.runtimeType == Text) {
+      text = (widget as Text).data;
+    } else if (widget.runtimeType == RichText) {
+      final RichText richText = widget as RichText;
+      if (richText.text.runtimeType == TextSpan) {
+        text = (richText.text as TextSpan).text;
+      }
+    } else if (widget.runtimeType == TextField) {
+      text = (widget as TextField).controller.text;
+    } else if (widget.runtimeType == TextFormField) {
+      text = (widget as TextFormField).controller.text;
+    } else if (widget.runtimeType == EditableText) {
+      text = (widget as EditableText).controller.text;
+    }
+
+    if (text == null) {
+      throw UnsupportedError('Type ${widget.runtimeType.toString()} is currently not supported by getText');
+    }
+
+    return GetTextResult(text);
   }
 
   Future<SetTextEntryEmulationResult> _setTextEntryEmulation(Command command) async {

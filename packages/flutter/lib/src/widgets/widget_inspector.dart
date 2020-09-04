@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -744,6 +746,8 @@ mixin WidgetInspectorService {
   bool _trackRebuildDirtyWidgets = false;
   bool _trackRepaintWidgets = false;
 
+  FlutterExceptionHandler _structuredExceptionHandler;
+
   _RegisterServiceExtensionCallback _registerServiceExtensionCallback;
   /// Registers a service extension method with the given name (full
   /// name "ext.flutter.inspector.name").
@@ -927,8 +931,17 @@ mixin WidgetInspectorService {
     );
 
     errorJson['errorsSinceReload'] = _errorsSinceReload;
-    _errorsSinceReload += 1;
+    if (_errorsSinceReload == 0) {
+      errorJson['renderedErrorText'] = TextTreeRenderer(
+        wrapWidth: FlutterError.wrapWidth,
+        wrapWidthProperties: FlutterError.wrapWidth,
+        maxDescendentsTruncatableNode: 5,
+      ).render(details.toDiagnosticsNode(style: DiagnosticsTreeStyle.error)).trimRight();
+    } else {
+      errorJson['renderedErrorText'] = 'Another exception was thrown: ${details.summary}';
+    }
 
+    _errorsSinceReload += 1;
     postEvent('Flutter.Error', errorJson);
   }
 
@@ -941,6 +954,14 @@ mixin WidgetInspectorService {
     _errorsSinceReload = 0;
   }
 
+  /// Whether structured errors are enabled.
+  ///
+  /// Structured errors provide semantic information that can be used by IDEs
+  /// to enhance the display of errors with rich formatting.
+  bool isStructuredErrorsEnabled() {
+    return const bool.fromEnvironment('flutter.inspector.structuredErrors');
+  }
+
   /// Called to register service extensions.
   ///
   /// See also:
@@ -949,6 +970,10 @@ mixin WidgetInspectorService {
   ///  * [BindingBase.initServiceExtensions], which explains when service
   ///    extensions can be used.
   void initServiceExtensions(_RegisterServiceExtensionCallback registerServiceExtensionCallback) {
+    _structuredExceptionHandler = _reportError;
+    if (isStructuredErrorsEnabled()) {
+      FlutterError.onError = _structuredExceptionHandler;
+    }
     _registerServiceExtensionCallback = registerServiceExtensionCallback;
     assert(!_debugServiceExtensionsRegistered);
     assert(() {
@@ -958,14 +983,13 @@ mixin WidgetInspectorService {
 
     SchedulerBinding.instance.addPersistentFrameCallback(_onFrameStart);
 
-    final FlutterExceptionHandler structuredExceptionHandler = _reportError;
-    final FlutterExceptionHandler defaultExceptionHandler = FlutterError.onError;
+    final FlutterExceptionHandler defaultExceptionHandler = FlutterError.presentError;
 
     _registerBoolServiceExtension(
       name: 'structuredErrors',
-      getter: () async => FlutterError.onError == structuredExceptionHandler,
+      getter: () async => FlutterError.presentError == _structuredExceptionHandler,
       setter: (bool value) {
-        FlutterError.onError = value ? structuredExceptionHandler : defaultExceptionHandler;
+        FlutterError.presentError = value ? _structuredExceptionHandler : defaultExceptionHandler;
         return Future<void>.value();
       },
     );
@@ -1196,8 +1220,7 @@ mixin WidgetInspectorService {
   }
 
   /// Returns a unique id for [object] that will remain live at least until
-  /// [disposeGroup] is called on [groupName] or [dispose] is called on the id
-  /// returned by this method.
+  /// [disposeGroup] is called on [groupName].
   @protected
   String toId(Object object, String groupName) {
     if (object == null)
@@ -1404,7 +1427,7 @@ mixin WidgetInspectorService {
     ) ?? const <_DiagnosticsPathNode>[];
   }
 
-  List<_DiagnosticsPathNode> _getRenderObjectParentChain(RenderObject renderObject, String groupName, { int maxparents }) {
+  List<_DiagnosticsPathNode> _getRenderObjectParentChain(RenderObject renderObject, String groupName) {
     final List<RenderObject> chain = <RenderObject>[];
     while (renderObject != null) {
       chain.add(renderObject);
@@ -1440,7 +1463,7 @@ mixin WidgetInspectorService {
       // https://github.com/flutter/flutter/issues/32660 is fixed.
       return !file.contains('packages/flutter/');
     }
-    for (String directory in _pubRootDirectories) {
+    for (final String directory in _pubRootDirectories) {
       if (file.startsWith(directory)) {
         return true;
       }
@@ -1510,9 +1533,11 @@ mixin WidgetInspectorService {
   /// object that `diagnosticsNodeId` references only including children that
   /// were created directly by user code.
   ///
+  /// {@template widgets.inspector.trackCreation}
   /// Requires [Widget] creation locations which are only available for debug
-  /// mode builds when the `--track-widget-creation` flag is passed to
-  /// `flutter_tool`.
+  /// mode builds when the `--track-widget-creation` flag is enabled on the call
+  /// to the `flutter` tool. This flag is enabled by default in debug builds.
+  /// {@endtemplate}
   ///
   /// See also:
   ///
@@ -1573,7 +1598,7 @@ mixin WidgetInspectorService {
     InspectorSerializationDelegate delegate,
   ) {
     final List<DiagnosticsNode> children = <DiagnosticsNode>[
-      for (DiagnosticsNode child in nodes)
+      for (final DiagnosticsNode child in nodes)
         if (!delegate.summaryTree || _shouldShowInSummaryTree(child))
           child
         else
@@ -1781,7 +1806,7 @@ mixin WidgetInspectorService {
     Element current = selection?.currentElement;
     if (current != null && !_isValueCreatedByLocalProject(current)) {
       Element firstLocal;
-      for (Element candidate in current.debugGetDiagnosticChain()) {
+      for (final Element candidate in current.debugGetDiagnosticChain()) {
         if (_isValueCreatedByLocalProject(candidate)) {
           firstLocal = candidate;
           break;
@@ -1794,10 +1819,7 @@ mixin WidgetInspectorService {
 
   /// Returns whether [Widget] creation locations are available.
   ///
-  /// [Widget] creation locations are only available for debug mode builds when
-  /// the `--track-widget-creation` flag is passed to `flutter_tool`. Dart 2.0
-  /// is required as injecting creation locations requires a
-  /// [Dart Kernel Transformer](https://github.com/dart-lang/sdk/wiki/Kernel-Documentation).
+  /// {@macro widgets.inspector.trackCreation}
   bool isWidgetCreationTracked() {
     _widgetCreationTracked ??= _WidgetForTypeTests() is _HasCreationLocation;
     return _widgetCreationTracked;
@@ -1843,7 +1865,7 @@ mixin WidgetInspectorService {
 
   void _onPaint(RenderObject renderObject) {
     try {
-      final Element element = renderObject.debugCreator?.element as Element;
+      final Element element = (renderObject.debugCreator as DebugCreator)?.element;
       if (element is! RenderObjectElement) {
         // This branch should not hit as long as all RenderObjects were created
         // by Widgets. It is possible there might be some render objects
@@ -1875,7 +1897,7 @@ mixin WidgetInspectorService {
     }
   }
 
-  /// This method is called by [WidgetBinding.performReassemble] to flush caches
+  /// This method is called by [WidgetsBinding.performReassemble] to flush caches
   /// of obsolete values after a hot reload.
   ///
   /// Do not call this method directly. Instead, use
@@ -2003,7 +2025,7 @@ class _ElementLocationStatsTracker {
     // trigger significant additional memory allocations. Avoiding memory
     // allocations is important to minimize the impact this class has on cpu
     // and memory performance of the running app.
-    for (_LocationCount entry in active) {
+    for (final _LocationCount entry in active) {
       entry.reset();
     }
     active.clear();
@@ -2014,7 +2036,7 @@ class _ElementLocationStatsTracker {
   Map<String, dynamic> exportToJson(Duration startTime) {
     final List<int> events = List<int>.filled(active.length * 2, 0);
     int j = 0;
-    for (_LocationCount stat in active) {
+    for (final _LocationCount stat in active) {
       events[j++] = stat.id;
       events[j++] = stat.count;
     }
@@ -2027,7 +2049,7 @@ class _ElementLocationStatsTracker {
     if (newLocations.isNotEmpty) {
       // Add all newly used location ids to the JSON.
       final Map<String, List<int>> locationsJson = <String, List<int>>{};
-      for (_LocationCount entry in newLocations) {
+      for (final _LocationCount entry in newLocations) {
         final _Location location = entry.location;
         final List<int> jsonForFile = locationsJson.putIfAbsent(
           location.file,
@@ -2274,6 +2296,9 @@ class _WidgetInspectorState extends State<WidgetInspector>
 
   @override
   Widget build(BuildContext context) {
+    // Be careful changing this build method. The _InspectorOverlayLayer
+    // assumes the root RenderObject for the WidgetInspector will be
+    // a RenderStack with a _RenderInspectorOverlay as the last child.
     return Stack(children: <Widget>[
       GestureDetector(
         onTap: _handleTap,
@@ -2338,7 +2363,7 @@ class InspectorSelection {
   set current(RenderObject value) {
     if (_current != value) {
       _current = value;
-      _currentElement = value.debugCreator.element as Element;
+      _currentElement = (value.debugCreator as DebugCreator).element;
     }
   }
 
@@ -2359,7 +2384,7 @@ class InspectorSelection {
   void _computeCurrent() {
     if (_index < candidates.length) {
       _current = candidates[index];
-      _currentElement = _current.debugCreator.element as Element;
+      _currentElement = (_current.debugCreator as DebugCreator).element;
     } else {
       _current = null;
       _currentElement = null;
@@ -2422,20 +2447,22 @@ class _RenderInspectorOverlay extends RenderBox {
     context.addLayer(_InspectorOverlayLayer(
       overlayRect: Rect.fromLTWH(offset.dx, offset.dy, size.width, size.height),
       selection: selection,
+      rootRenderObject: parent is RenderObject ? parent as RenderObject : null,
     ));
   }
 }
 
+@immutable
 class _TransformedRect {
-  _TransformedRect(RenderObject object)
+  _TransformedRect(RenderObject object, RenderObject ancestor)
     : rect = object.semanticBounds,
-      transform = object.getTransformTo(null);
+      transform = object.getTransformTo(ancestor);
 
   final Rect rect;
   final Matrix4 transform;
 
   @override
-  bool operator ==(dynamic other) {
+  bool operator ==(Object other) {
     if (other.runtimeType != runtimeType)
       return false;
     return other is _TransformedRect
@@ -2451,8 +2478,9 @@ class _TransformedRect {
 ///
 /// The equality operator can be used to determine whether the overlay needs to
 /// be rendered again.
+@immutable
 class _InspectorOverlayRenderState {
-  _InspectorOverlayRenderState({
+  const _InspectorOverlayRenderState({
     @required this.overlayRect,
     @required this.selected,
     @required this.candidates,
@@ -2467,7 +2495,7 @@ class _InspectorOverlayRenderState {
   final TextDirection textDirection;
 
   @override
-  bool operator ==(dynamic other) {
+  bool operator ==(Object other) {
     if (other.runtimeType != runtimeType)
       return false;
     return other is _InspectorOverlayRenderState
@@ -2496,6 +2524,7 @@ class _InspectorOverlayLayer extends Layer {
   _InspectorOverlayLayer({
     @required this.overlayRect,
     @required this.selection,
+    @required this.rootRenderObject,
   }) : assert(overlayRect != null),
        assert(selection != null) {
     bool inDebugMode = false;
@@ -2522,6 +2551,10 @@ class _InspectorOverlayLayer extends Layer {
   /// (as described at [Layer]).
   final Rect overlayRect;
 
+  /// Widget inspector root render object. The selection overlay will be painted
+  /// with transforms relative to this render object.
+  final RenderObject rootRenderObject;
+
   _InspectorOverlayRenderState _lastState;
 
   /// Picture generated from _lastState.
@@ -2536,16 +2569,21 @@ class _InspectorOverlayLayer extends Layer {
       return;
 
     final RenderObject selected = selection.current;
+
+    if (!_isInInspectorRenderObjectTree(selected))
+      return;
+
     final List<_TransformedRect> candidates = <_TransformedRect>[];
-    for (RenderObject candidate in selection.candidates) {
-      if (candidate == selected || !candidate.attached)
+    for (final RenderObject candidate in selection.candidates) {
+      if (candidate == selected || !candidate.attached
+          || !_isInInspectorRenderObjectTree(candidate))
         continue;
-      candidates.add(_TransformedRect(candidate));
+      candidates.add(_TransformedRect(candidate, rootRenderObject));
     }
 
     final _InspectorOverlayRenderState state = _InspectorOverlayRenderState(
       overlayRect: overlayRect,
-      selected: _TransformedRect(selected),
+      selected: _TransformedRect(selected, rootRenderObject),
       tooltip: selection.currentElement.toStringShort(),
       textDirection: TextDirection.ltr,
       candidates: candidates,
@@ -2562,6 +2600,9 @@ class _InspectorOverlayLayer extends Layer {
     final ui.PictureRecorder recorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(recorder, state.overlayRect);
     final Size size = state.overlayRect.size;
+    // The overlay rect could have an offset if the widget inspector does
+    // not take all the screen.
+    canvas.translate(state.overlayRect.left, state.overlayRect.top);
 
     final Paint fillPaint = Paint()
       ..style = PaintingStyle.fill
@@ -2584,7 +2625,7 @@ class _InspectorOverlayLayer extends Layer {
     // Show all other candidate possibly selected elements. This helps selecting
     // render objects by selecting the edge of the bounding box shows all
     // elements the user could toggle the selection between.
-    for (_TransformedRect transformedRect in state.candidates) {
+    for (final _TransformedRect transformedRect in state.candidates) {
       canvas
         ..save()
         ..transform(transformedRect.transform.storage)
@@ -2674,6 +2715,24 @@ class _InspectorOverlayLayer extends Layer {
   }) {
     return false;
   }
+
+  /// Return whether or not a render object belongs to this inspector widget
+  /// tree.
+  /// The inspector selection is static, so if there are multiple inspector
+  /// overlays in the same app (i.e. an storyboard), a selected or candidate
+  /// render object may not belong to this tree.
+  bool _isInInspectorRenderObjectTree(RenderObject child) {
+    RenderObject current = child.parent as RenderObject;
+    while (current != null) {
+      // We found the widget inspector render object.
+      if (current is RenderStack
+          && current.lastChild is _RenderInspectorOverlay) {
+        return rootRenderObject == current;
+      }
+      current = current.parent as RenderObject;
+    }
+    return false;
+  }
 }
 
 const double _kScreenEdgeMargin = 10.0;
@@ -2693,11 +2752,7 @@ const TextStyle _messageStyle = TextStyle(
 /// Interface for classes that track the source code location the their
 /// constructor was called from.
 ///
-/// A [Dart Kernel Transformer](https://github.com/dart-lang/sdk/wiki/Kernel-Documentation).
-/// adds this interface to the [Widget] class when the
-/// `--track-widget-creation` flag is passed to `flutter_tool`. Dart 2.0 is
-/// required as injecting creation locations requires a
-/// [Dart Kernel Transformer](https://github.com/dart-lang/sdk/wiki/Kernel-Documentation).
+/// {@macro widgets.inspector.trackCreation}
 // ignore: unused_element
 abstract class _HasCreationLocation {
   _Location get _location;
@@ -2767,7 +2822,7 @@ bool _isDebugCreator(DiagnosticsNode node) => node is DiagnosticsDebugCreator;
 Iterable<DiagnosticsNode> transformDebugCreator(Iterable<DiagnosticsNode> properties) sync* {
   final List<DiagnosticsNode> pending = <DiagnosticsNode>[];
   bool foundStackTrace = false;
-  for (DiagnosticsNode node in properties) {
+  for (final DiagnosticsNode node in properties) {
     if (!foundStackTrace && node is DiagnosticsStackTrace)
       foundStackTrace = true;
     if (_isDebugCreator(node)) {
@@ -2809,7 +2864,7 @@ Iterable<DiagnosticsNode> _describeRelevantUserCode(Element element) {
   bool processElement(Element target) {
     // TODO(chunhtai): should print out all the widgets that are about to cross
     // package boundaries.
-    if (_isLocalCreationLocation(target)) {
+    if (debugIsLocalCreationLocation(target)) {
       nodes.add(
         DiagnosticsBlock(
           name: 'The relevant error-causing widget was',
@@ -2830,28 +2885,29 @@ Iterable<DiagnosticsNode> _describeRelevantUserCode(Element element) {
 
 /// Returns if an object is user created.
 ///
-/// This function will only work in debug mode builds when
-/// the `--track-widget-creation` flag is passed to `flutter_tool`. Dart 2.0 is
-/// required as injecting creation locations requires a
-/// [Dart Kernel Transformer](https://github.com/dart-lang/sdk/wiki/Kernel-Documentation).
+/// This always returns false if it is not called in debug mode.
+///
+/// {@macro widgets.inspector.trackCreation}
 ///
 /// Currently is local creation locations are only available for
 /// [Widget] and [Element].
-bool _isLocalCreationLocation(Object object) {
-  final _Location location = _getCreationLocation(object);
-  if (location == null)
-    return false;
-  return WidgetInspectorService.instance._isLocalCreationLocation(location);
+bool debugIsLocalCreationLocation(Object object) {
+  bool isLocal = false;
+  assert(() {
+    final _Location location = _getCreationLocation(object);
+    if (location == null)
+      isLocal =  false;
+    isLocal = WidgetInspectorService.instance._isLocalCreationLocation(location);
+    return true;
+  }());
+  return isLocal;
 }
 
 /// Returns the creation location of an object in String format if one is available.
 ///
 /// ex: "file:///path/to/main.dart:4:3"
 ///
-/// Creation locations are only available for debug mode builds when
-/// the `--track-widget-creation` flag is passed to `flutter_tool`. Dart 2.0 is
-/// required as injecting creation locations requires a
-/// [Dart Kernel Transformer](https://github.com/dart-lang/sdk/wiki/Kernel-Documentation).
+/// {@macro widgets.inspector.trackCreation}
 ///
 /// Currently creation locations are only available for [Widget] and [Element].
 String _describeCreationLocation(Object object) {
@@ -2861,10 +2917,7 @@ String _describeCreationLocation(Object object) {
 
 /// Returns the creation location of an object if one is available.
 ///
-/// Creation locations are only available for debug mode builds when
-/// the `--track-widget-creation` flag is passed to `flutter_tool`. Dart 2.0 is
-/// required as injecting creation locations requires a
-/// [Dart Kernel Transformer](https://github.com/dart-lang/sdk/wiki/Kernel-Documentation).
+/// {@macro widgets.inspector.trackCreation}
 ///
 /// Currently creation locations are only available for [Widget] and [Element].
 _Location _getCreationLocation(Object object) {

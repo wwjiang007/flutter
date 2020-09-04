@@ -2,16 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-class NotifyMaterial extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    LayoutChangedNotification().dispatch(context);
-    return Container();
-  }
-}
 
 void main() {
   testWidgets('SizeChangedLayoutNotification test', (WidgetTester tester) async {
@@ -37,7 +31,7 @@ void main() {
       Center(
         child: NotificationListener<LayoutChangedNotification>(
           onNotification: (LayoutChangedNotification notification) {
-            expect(notification, isInstanceOf<SizeChangedLayoutNotification>());
+            expect(notification, isA<SizeChangedLayoutNotification>());
             notified = true;
             return true;
           },

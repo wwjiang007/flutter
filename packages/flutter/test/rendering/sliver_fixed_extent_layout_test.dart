@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import '../flutter_test_alternative.dart';
@@ -57,7 +59,7 @@ class TestRenderSliverBoxChildManager extends RenderSliverBoxChildManager {
     _renderObject = RenderSliverFillViewport(
       childManager: this,
     );
-    return _renderObject;
+    return _renderObject as RenderSliverFillViewport;
   }
 
   int _currentlyUpdatingChildIndex;
@@ -97,7 +99,7 @@ class TestRenderSliverBoxChildManager extends RenderSliverBoxChildManager {
   @override
   void didAdoptChild(RenderBox child) {
     assert(_currentlyUpdatingChildIndex != null);
-    final SliverMultiBoxAdaptorParentData childParentData = child.parentData;
+    final SliverMultiBoxAdaptorParentData childParentData = child.parentData as SliverMultiBoxAdaptorParentData;
     childParentData.index = _currentlyUpdatingChildIndex;
   }
 

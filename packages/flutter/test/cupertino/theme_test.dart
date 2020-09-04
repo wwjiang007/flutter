@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:async';
 
-import 'package:collection/collection.dart' show SetEquality;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/cupertino.dart';
@@ -52,7 +53,7 @@ void main() {
   testWidgets('Default theme has defaults', (WidgetTester tester) async {
     final CupertinoThemeData theme = await testTheme(tester, const CupertinoThemeData());
 
-    expect(theme.brightness, Brightness.light);
+    expect(theme.brightness, isNull);
     expect(theme.primaryColor, CupertinoColors.activeBlue);
     expect(theme.textTheme.textStyle.fontSize, 17.0);
   });
@@ -176,7 +177,7 @@ void main() {
       .toSet();
 
     expect(
-      const SetEquality<String>().equals(
+      setEquals(
         description,
         <String>{ 'brightness',
           'primaryColor',
@@ -190,10 +191,21 @@ void main() {
           'navLargeTitleTextStyle',
           'navActionTextStyle',
           'pickerTextStyle',
-          'dateTimePickerTextStyle'
+          'dateTimePickerTextStyle',
         }
       ),
       isTrue,
+    );
+  });
+
+  testWidgets('CupertinoTheme.toStringDeep uses single-line style', (WidgetTester tester) async {
+    // Regression test for https://github.com/flutter/flutter/issues/47651.
+    expect(
+      const CupertinoTheme(
+        data: CupertinoThemeData(primaryColor: Color(0x00000000)),
+        child: SizedBox(),
+      ).toStringDeep().trimRight(),
+      isNot(contains('\n')),
     );
   });
 
@@ -209,7 +221,7 @@ void main() {
     }
   }
 
-  final Function dynamicColorsTestGroup = () {
+  final VoidCallback dynamicColorsTestGroup = () {
     testWidgets('CupertinoTheme.of resolves colors', (WidgetTester tester) async {
       final CupertinoThemeData data = CupertinoThemeData(brightness: currentBrightness, primaryColor: CupertinoColors.systemRed);
       final CupertinoThemeData theme = await testTheme(tester, data);

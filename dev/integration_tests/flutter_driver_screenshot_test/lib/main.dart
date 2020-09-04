@@ -9,7 +9,7 @@ import 'package:device_info/device_info.dart';
 import './image_page.dart';
 import './page.dart';
 
-final List<Page> _allPages = <Page>[
+final List<PageWidget> _allPages = <PageWidget>[
   const ImagePage(),
 ];
 
@@ -62,7 +62,7 @@ class _MyHomePageState extends State<_MyHomePage> {
     );
   }
 
-  void _pushPage(BuildContext context, Page page) {
+  void _pushPage(BuildContext context, PageWidget page) {
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => page,
     ));
@@ -71,30 +71,26 @@ class _MyHomePageState extends State<_MyHomePage> {
   Future<String> _handleDriverMessage(String message) async {
     switch (message) {
       case 'device_model':
-        String target;
+        final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
         switch (Theme.of(context).platform) {
           case TargetPlatform.iOS:
-            target = 'ios';
-            break;
-          case TargetPlatform.android:
-            target = 'android';
-            break;
-          default:
-            target = 'unsupported';
-            break;
-        }
-        final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-        if (target == 'ios') {
-          final IosDeviceInfo iosDeviceInfo = await deviceInfo.iosInfo;
-          if (iosDeviceInfo.isPhysicalDevice) {
-            return iosDeviceInfo.utsname.machine;
-          } else {
+            final IosDeviceInfo iosDeviceInfo = await deviceInfo.iosInfo;
+            if (iosDeviceInfo.isPhysicalDevice) {
+              return iosDeviceInfo.utsname.machine;
+            }
             return 'sim_' + iosDeviceInfo.name;
-          }
-        } else if (target == 'android') {
-          return (await deviceInfo.androidInfo).model;
+          case TargetPlatform.android:
+            return (await deviceInfo.androidInfo).model;
+          case TargetPlatform.fuchsia:
+            return 'fuchsia';
+          case TargetPlatform.macOS:
+          case TargetPlatform.linux:
+          case TargetPlatform.windows:
+            return 'unsupported';
+            break;
         }
-        break;
+        assert(false, 'Unhandled Theme target platform ${Theme.of(context).platform}.');
+        return 'unsupported';
     }
     return 'unknown message: "$message"';
   }

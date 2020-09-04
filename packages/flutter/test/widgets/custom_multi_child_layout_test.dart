@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
@@ -49,8 +51,8 @@ Widget buildFrame(MultiChildLayoutDelegate delegate) {
   return Center(
     child: CustomMultiChildLayout(
       children: <Widget>[
-        LayoutId(id: 0, child: Container(width: 150.0, height: 100.0)),
-        LayoutId(id: 1, child: Container(width: 100.0, height: 200.0)),
+        LayoutId(id: 0, child: const SizedBox(width: 150.0, height: 100.0)),
+        LayoutId(id: 1, child: const SizedBox(width: 100.0, height: 200.0)),
       ],
       delegate: delegate,
     ),
@@ -132,18 +134,6 @@ class NonExistentPositionDelegate extends MultiChildLayoutDelegate {
   bool shouldRelayout(MultiChildLayoutDelegate oldDelegate) => true;
 }
 
-// Used in the 'performLayout error control test' test case
-//  to trigger an error when positioning with null offset
-class NullOffsetPositionDelegate extends MultiChildLayoutDelegate {
-  @override
-  void performLayout(Size size) {
-    positionChild(0, null);
-  }
-
-  @override
-  bool shouldRelayout(MultiChildLayoutDelegate oldDelegate) => true;
-}
-
 // Used in the 'performLayout error control test' test case for triggering
 //  to layout child more than once
 class InvalidConstraintsChildLayoutDelegate extends MultiChildLayoutDelegate {
@@ -160,7 +150,7 @@ class InvalidConstraintsChildLayoutDelegate extends MultiChildLayoutDelegate {
   bool shouldRelayout(MultiChildLayoutDelegate oldDelegate) => true;
 }
 
-class LayoutWithMissingId extends ParentDataWidget<CustomMultiChildLayout> {
+class LayoutWithMissingId extends ParentDataWidget<MultiChildLayoutParentData> {
   const LayoutWithMissingId({
     Key key,
     @required Widget child,
@@ -169,6 +159,9 @@ class LayoutWithMissingId extends ParentDataWidget<CustomMultiChildLayout> {
 
   @override
   void applyParentData(RenderObject renderObject) {}
+
+  @override
+  Type get debugTypicalAncestorWidgetClass => CustomMultiChildLayout;
 }
 
 void main() {
@@ -222,13 +215,13 @@ void main() {
             id: 0,
             child: CustomMultiChildLayout(
               children: <Widget>[
-                LayoutId(id: 0, child: Container(width: 150.0, height: 100.0)),
-                LayoutId(id: 1, child: Container(width: 100.0, height: 200.0)),
+                LayoutId(id: 0, child: const SizedBox(width: 150.0, height: 100.0)),
+                LayoutId(id: 1, child: const SizedBox(width: 100.0, height: 200.0)),
               ],
               delegate: delegate,
             ),
           ),
-          LayoutId(id: 1, child: Container(width: 100.0, height: 200.0)),
+          LayoutId(id: 1, child: const SizedBox(width: 100.0, height: 200.0)),
         ],
         delegate: delegate,
       ),
@@ -363,17 +356,6 @@ void main() {
           '   The NonExistentPositionDelegate custom multichild layout delegate\n'
           '   tried to position out a non-existent child:\n'
           '   There is no child with the id "1".\n'
-      );
-    });
-
-    testWidgets('positionChild on non existent child', (WidgetTester tester) async {
-      expectFlutterErrorMessage(
-        tester: tester,
-        delegate: NullOffsetPositionDelegate(),
-        message:
-          'FlutterError\n'
-          '   The NullOffsetPositionDelegate custom multichild layout delegate\n'
-          '   provided a null position for the child with id "0".\n',
       );
     });
 

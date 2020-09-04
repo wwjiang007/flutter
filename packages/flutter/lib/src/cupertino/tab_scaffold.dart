@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'bottom_tab_bar.dart';
@@ -15,7 +17,7 @@ import 'theme.dart';
 /// [CupertinoTabController] controls, as well as the currently selected tab item of
 /// its [CupertinoTabBar].
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// [CupertinoTabController] can be used to switch tabs:
 ///
@@ -135,7 +137,7 @@ class CupertinoTabController extends ChangeNotifier {
 /// (via [State.setState], for instance) from its descendant rather than from
 /// its ancestor.
 ///
-/// {@tool sample}
+/// {@tool snippet}
 ///
 /// A sample code implementing a typical iOS information architecture with tabs.
 ///
@@ -380,6 +382,7 @@ class _CupertinoTabScaffoldState extends State<CupertinoTabScaffold> {
       // obstructed area.
       if (widget.tabBar.opaque(context)) {
         contentPadding = EdgeInsets.only(bottom: bottomPadding);
+        newMediaQuery = newMediaQuery.removePadding(removeBottom: true);
       } else {
         newMediaQuery = newMediaQuery.copyWith(
           padding: newMediaQuery.padding.copyWith(
@@ -522,10 +525,10 @@ class _TabSwitchingViewState extends State<_TabSwitchingView> {
 
   @override
   void dispose() {
-    for (FocusScopeNode focusScopeNode in tabFocusNodes) {
+    for (final FocusScopeNode focusScopeNode in tabFocusNodes) {
       focusScopeNode.dispose();
     }
-    for (FocusScopeNode focusScopeNode in discardedNodes) {
+    for (final FocusScopeNode focusScopeNode in discardedNodes) {
       focusScopeNode.dispose();
     }
     super.dispose();

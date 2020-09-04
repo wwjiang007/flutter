@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:async';
 import 'dart:ui' show Locale;
 
@@ -47,14 +49,14 @@ Future<Map<Type, dynamic>> _loadAll(Locale locale, Iterable<LocalizationsDelegat
   // locale.languageCode.
   final Set<Type> types = <Type>{};
   final List<LocalizationsDelegate<dynamic>> delegates = <LocalizationsDelegate<dynamic>>[];
-  for (LocalizationsDelegate<dynamic> delegate in allDelegates) {
+  for (final LocalizationsDelegate<dynamic> delegate in allDelegates) {
     if (!types.contains(delegate.type) && delegate.isSupported(locale)) {
       types.add(delegate.type);
       delegates.add(delegate);
     }
   }
 
-  for (LocalizationsDelegate<dynamic> delegate in delegates) {
+  for (final LocalizationsDelegate<dynamic> delegate in delegates) {
     final Future<dynamic> inputValue = delegate.load(locale);
     dynamic completedValue;
     final Future<dynamic> futureValue = inputValue.then<dynamic>((dynamic value) {
@@ -135,7 +137,7 @@ abstract class LocalizationsDelegate<T> {
   Type get type => T;
 
   @override
-  String toString() => '$runtimeType[$type]';
+  String toString() => '${objectRuntimeType(this, 'LocalizationsDelegate')}[$type]';
 }
 
 /// Interface for localized resource values for the lowest levels of the Flutter
@@ -193,7 +195,7 @@ class _WidgetsLocalizationsDelegate extends LocalizationsDelegate<WidgetsLocaliz
 ///
 ///  * [GlobalWidgetsLocalizations], which provides widgets localizations for
 ///    many languages.
-///  * [WidgetsApp.delegates], which automatically includes
+///  * [WidgetsApp.localizationsDelegates], which automatically includes
 ///    [DefaultWidgetsLocalizations.delegate] by default.
 class DefaultWidgetsLocalizations implements WidgetsLocalizations {
   /// Construct an object that defines the localized values for the widgets
@@ -219,7 +221,7 @@ class DefaultWidgetsLocalizations implements WidgetsLocalizations {
   /// A [LocalizationsDelegate] that uses [DefaultWidgetsLocalizations.load]
   /// to create an instance of this class.
   ///
-  /// [WidgetsApp] automatically adds this value to [WidgetApp.localizationsDelegates].
+  /// [WidgetsApp] automatically adds this value to [WidgetsApp.localizationsDelegates].
   static const LocalizationsDelegate<WidgetsLocalizations> delegate = _WidgetsLocalizationsDelegate();
 }
 
@@ -298,7 +300,11 @@ class _LocalizationsScope extends InheritedWidget {
 /// `Localizations.of(context)` will be rebuilt after the resources
 /// for the new locale have been loaded.
 ///
-/// {@tool sample}
+/// The `Localizations` widget also instantiates [Directionality] in order to
+/// support the appropriate [Directionality.textDirection] of the localized
+/// resources.
+///
+/// {@tool snippet}
 ///
 /// This following class is defined in terms of the
 /// [Dart `intl` package](https://github.com/dart-lang/intl). Using the `intl`
