@@ -30,6 +30,7 @@ import 'theme.dart';
 import 'theme_data.dart';
 
 // Examples can assume:
+// // @dart = 2.9
 // TabController tabController;
 // void setState(VoidCallback fn) { }
 // String appBarTitle;
@@ -68,7 +69,7 @@ enum _ScaffoldSlot {
 /// [BuildContext] via [ScaffoldMessenger.of] and use the
 /// [ScaffoldMessengerState.showSnackBar] function.
 ///
-/// {@tool dartpad --template=stateless_widget_scaffold_center}
+/// {@tool dartpad --template=stateless_widget_scaffold_center_no_null_safety}
 ///
 /// Here is an example of showing a [SnackBar] when the user presses a button.
 ///
@@ -105,13 +106,13 @@ class ScaffoldMessenger extends StatefulWidget {
 
   /// The widget below this widget in the tree.
   ///
-  /// {@macro flutter.widgets.child}
+  /// {@macro flutter.widgets.ProxyWidget.child}
   final Widget child;
 
   /// The state from the closest instance of this class that encloses the given
   /// context.
   ///
-  /// {@tool dartpad --template=stateless_widget_scaffold_center}
+  /// {@tool dartpad --template=stateless_widget_scaffold_center_no_null_safety}
   /// Typical usage of the [ScaffoldMessenger.of] function is to call it in
   /// response to a user gesture or an application state change.
   ///
@@ -137,7 +138,7 @@ class ScaffoldMessenger extends StatefulWidget {
   /// function. The [MaterialApp.scaffoldMessengerKey] refers to the root
   /// ScaffoldMessenger that is provided by default.
   ///
-  /// {@tool dartpad --template=freeform}
+  /// {@tool dartpad --template=freeform_no_null_safety}
   /// Sometimes [SnackBar]s are produced by code that doesn't have ready access
   /// to a valid [BuildContext]. One such example of this is when you show a
   /// SnackBar from a method outside of the `build` function. In these
@@ -303,7 +304,7 @@ class ScaffoldMessengerState extends State<ScaffoldMessenger> with TickerProvide
   /// See [ScaffoldMessenger.of] for information about how to obtain the
   /// [ScaffoldMessengerState].
   ///
-  /// {@tool dartpad --template=stateless_widget_scaffold_center}
+  /// {@tool dartpad --template=stateless_widget_scaffold_center_no_null_safety}
   ///
   /// Here is an example of showing a [SnackBar] when the user presses a button.
   ///
@@ -959,7 +960,9 @@ class _ScaffoldLayout extends MultiChildLayoutDelegate {
       final ScaffoldPrelayoutGeometry currentGeometry = ScaffoldPrelayoutGeometry(
         bottomSheetSize: bottomSheetSize,
         contentBottom: contentBottom,
-        contentTop: contentTop,
+        /// [appBarHeight] should be used instead of [contentTop] because
+        /// ScaffoldPrelayoutGeometry.contentTop must not be affected by [extendBodyBehindAppBar].
+        contentTop: appBarHeight,
         floatingActionButtonSize: fabSize,
         minInsets: minInsets,
         scaffoldSize: size,
@@ -1256,7 +1259,7 @@ class _FloatingActionButtonTransitionState extends State<_FloatingActionButtonTr
 /// [ScaffoldState] for the current [BuildContext] via [Scaffold.of] and use the
 /// [ScaffoldState.showBottomSheet] function.
 ///
-/// {@tool dartpad --template=stateful_widget_material}
+/// {@tool dartpad --template=stateful_widget_material_no_null_safety}
 /// This example shows a [Scaffold] with a [body] and [FloatingActionButton].
 /// The [body] is a [Text] placed in a [Center] in order to center the text
 /// within the [Scaffold]. The [FloatingActionButton] is connected to a
@@ -1285,7 +1288,7 @@ class _FloatingActionButtonTransitionState extends State<_FloatingActionButtonTr
 /// ```
 /// {@end-tool}
 ///
-/// {@tool dartpad --template=stateful_widget_material}
+/// {@tool dartpad --template=stateful_widget_material_no_null_safety}
 /// This example shows a [Scaffold] with a blueGrey [backgroundColor], [body]
 /// and [FloatingActionButton]. The [body] is a [Text] placed in a [Center] in
 /// order to center the text within the [Scaffold]. The [FloatingActionButton]
@@ -1315,7 +1318,7 @@ class _FloatingActionButtonTransitionState extends State<_FloatingActionButtonTr
 /// ```
 /// {@end-tool}
 ///
-/// {@tool dartpad --template=stateful_widget_material}
+/// {@tool dartpad --template=stateful_widget_material_no_null_safety}
 /// This example shows a [Scaffold] with an [AppBar], a [BottomAppBar] and a
 /// [FloatingActionButton]. The [body] is a [Text] placed in a [Center] in order
 /// to center the text within the [Scaffold]. The [FloatingActionButton] is
@@ -1441,7 +1444,9 @@ class Scaffold extends StatefulWidget {
     this.floatingActionButtonAnimator,
     this.persistentFooterButtons,
     this.drawer,
+    this.onDrawerChanged,
     this.endDrawer,
+    this.onEndDrawerChanged,
     this.bottomNavigationBar,
     this.bottomSheet,
     this.backgroundColor,
@@ -1555,7 +1560,7 @@ class Scaffold extends StatefulWidget {
   ///
   /// To close the drawer, use [Navigator.pop].
   ///
-  /// {@tool dartpad --template=stateful_widget_material}
+  /// {@tool dartpad --template=stateful_widget_material_no_null_safety}
   /// To disable the drawer edge swipe, set the
   /// [Scaffold.drawerEnableOpenDragGesture] to false. Then, use
   /// [ScaffoldState.openDrawer] to open the drawer and [Navigator.pop] to close
@@ -1605,6 +1610,9 @@ class Scaffold extends StatefulWidget {
   /// {@end-tool}
   final Widget? drawer;
 
+  /// Optional callback that is called when the [Scaffold.drawer] is opened or closed.
+  final DrawerCallback? onDrawerChanged;
+
   /// A panel displayed to the side of the [body], often hidden on mobile
   /// devices. Swipes in from right-to-left ([TextDirection.ltr]) or
   /// left-to-right ([TextDirection.rtl])
@@ -1615,7 +1623,7 @@ class Scaffold extends StatefulWidget {
   ///
   /// To close the drawer, use [Navigator.pop].
   ///
-  /// {@tool dartpad --template=stateful_widget_material}
+  /// {@tool dartpad --template=stateful_widget_material_no_null_safety}
   /// To disable the drawer edge swipe, set the
   /// [Scaffold.endDrawerEnableOpenDragGesture] to false. Then, use
   /// [ScaffoldState.openEndDrawer] to open the drawer and [Navigator.pop] to
@@ -1664,6 +1672,9 @@ class Scaffold extends StatefulWidget {
   /// ```
   /// {@end-tool}
   final Widget? endDrawer;
+
+  /// Optional callback that is called when the [Scaffold.endDrawer] is opened or closed.
+  final DrawerCallback? onEndDrawerChanged;
 
   /// The color to use for the scrim that obscures primary content while a drawer is open.
   ///
@@ -1747,7 +1758,7 @@ class Scaffold extends StatefulWidget {
   /// [AppBar.primary], is true.
   final bool primary;
 
-  /// {@macro flutter.material.drawer.dragStartBehavior}
+  /// {@macro flutter.material.DrawerController.dragStartBehavior}
   final DragStartBehavior drawerDragStartBehavior;
 
   /// The width of the area within which a horizontal swipe will open the
@@ -1779,7 +1790,7 @@ class Scaffold extends StatefulWidget {
   /// If no instance of this class encloses the given context, will cause an
   /// assert in debug mode, and throw an exception in release mode.
   ///
-  /// {@tool dartpad --template=freeform}
+  /// {@tool dartpad --template=freeform_no_null_safety}
   /// Typical usage of the [Scaffold.of] function is to call it from within the
   /// `build` method of a child of a [Scaffold].
   ///
@@ -1850,7 +1861,7 @@ class Scaffold extends StatefulWidget {
   /// ```
   /// {@end-tool}
   ///
-  /// {@tool dartpad --template=stateless_widget_material}
+  /// {@tool dartpad --template=stateless_widget_material_no_null_safety}
   /// When the [Scaffold] is actually created in the same `build` function, the
   /// `context` argument to the `build` function can't be used to find the
   /// [Scaffold] (since it's "above" the widget being returned in the widget
@@ -2089,12 +2100,14 @@ class ScaffoldState extends State<Scaffold> with TickerProviderStateMixin {
     setState(() {
       _drawerOpened = isOpened;
     });
+    widget.onDrawerChanged?.call(isOpened);
   }
 
   void _endDrawerOpenedCallback(bool isOpened) {
     setState(() {
       _endDrawerOpened = isOpened;
     });
+    widget.onEndDrawerChanged?.call(isOpened);
   }
 
   /// Opens the [Drawer] (if any).
@@ -2160,7 +2173,7 @@ class ScaffoldState extends State<Scaffold> with TickerProviderStateMixin {
   /// See [ScaffoldMessenger.of] for information about how to obtain the
   /// [ScaffoldMessengerState].
   ///
-  /// {@tool dartpad --template=stateless_widget_scaffold_center}
+  /// {@tool dartpad --template=stateless_widget_scaffold_center_no_null_safety}
   ///
   /// Here is an example of showing a [SnackBar] when the user presses a button.
   ///
@@ -2534,7 +2547,7 @@ class ScaffoldState extends State<Scaffold> with TickerProviderStateMixin {
   /// of the app. Modal bottom sheets can be created and displayed with the
   /// [showModalBottomSheet] function.
   ///
-  /// {@tool dartpad --template=stateless_widget_scaffold}
+  /// {@tool dartpad --template=stateless_widget_scaffold_no_null_safety}
   ///
   /// This example demonstrates how to use `showBottomSheet` to display a
   /// bottom sheet when a user taps a button. It also demonstrates how to
@@ -2670,13 +2683,11 @@ class ScaffoldState extends State<Scaffold> with TickerProviderStateMixin {
   // iOS FEATURES - status bar tap, back gesture
 
   // On iOS, tapping the status bar scrolls the app's primary scrollable to the
-  // top. We implement this by providing a primary scroll controller and
+  // top. We implement this by looking up the  primary scroll controller and
   // scrolling it to the top when tapped.
-
-  final ScrollController _primaryScrollController = ScrollController();
-
   void _handleStatusBarTap() {
-    if (_primaryScrollController.hasClients) {
+    final ScrollController? _primaryScrollController = PrimaryScrollController.of(context);
+    if (_primaryScrollController != null && _primaryScrollController.hasClients) {
       _primaryScrollController.animateTo(
         0.0,
         duration: const Duration(milliseconds: 300),
@@ -2907,7 +2918,7 @@ class ScaffoldState extends State<Scaffold> with TickerProviderStateMixin {
     assert(debugCheckHasMediaQuery(context));
     assert(debugCheckHasDirectionality(context));
     final MediaQueryData mediaQuery = MediaQuery.of(context);
-    final ThemeData themeData = Theme.of(context)!;
+    final ThemeData themeData = Theme.of(context);
     final TextDirection textDirection = Directionality.of(context);
 
     // TODO(Piinks): Remove old SnackBar API after migrating ScaffoldMessenger
@@ -3160,30 +3171,27 @@ class ScaffoldState extends State<Scaffold> with TickerProviderStateMixin {
     return _ScaffoldScope(
       hasDrawer: hasDrawer,
       geometryNotifier: _geometryNotifier,
-      child: PrimaryScrollController(
-        controller: _primaryScrollController,
-        child: Material(
-          color: widget.backgroundColor ?? themeData.scaffoldBackgroundColor,
-          child: AnimatedBuilder(animation: _floatingActionButtonMoveController, builder: (BuildContext context, Widget? child) {
-            return CustomMultiChildLayout(
-              children: children,
-              delegate: _ScaffoldLayout(
-                extendBody: _extendBody,
-                extendBodyBehindAppBar: widget.extendBodyBehindAppBar,
-                minInsets: minInsets,
-                minViewPadding: minViewPadding,
-                currentFloatingActionButtonLocation: _floatingActionButtonLocation!,
-                floatingActionButtonMoveAnimationProgress: _floatingActionButtonMoveController.value,
-                floatingActionButtonMotionAnimator: _floatingActionButtonAnimator,
-                geometryNotifier: _geometryNotifier,
-                previousFloatingActionButtonLocation: _previousFloatingActionButtonLocation!,
-                textDirection: textDirection,
-                isSnackBarFloating: isSnackBarFloating,
-                snackBarWidth: snackBarWidth,
-              ),
-            );
-          }),
-        ),
+      child: Material(
+        color: widget.backgroundColor ?? themeData.scaffoldBackgroundColor,
+        child: AnimatedBuilder(animation: _floatingActionButtonMoveController, builder: (BuildContext context, Widget? child) {
+          return CustomMultiChildLayout(
+            children: children,
+            delegate: _ScaffoldLayout(
+              extendBody: _extendBody,
+              extendBodyBehindAppBar: widget.extendBodyBehindAppBar,
+              minInsets: minInsets,
+              minViewPadding: minViewPadding,
+              currentFloatingActionButtonLocation: _floatingActionButtonLocation!,
+              floatingActionButtonMoveAnimationProgress: _floatingActionButtonMoveController.value,
+              floatingActionButtonMotionAnimator: _floatingActionButtonAnimator,
+              geometryNotifier: _geometryNotifier,
+              previousFloatingActionButtonLocation: _previousFloatingActionButtonLocation!,
+              textDirection: textDirection,
+              isSnackBarFloating: isSnackBarFloating,
+              snackBarWidth: snackBarWidth,
+            ),
+          );
+        }),
       ),
     );
   }

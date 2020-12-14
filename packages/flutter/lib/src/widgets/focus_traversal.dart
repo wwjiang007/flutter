@@ -1107,7 +1107,7 @@ class ReadingOrderTraversalPolicy extends FocusTraversalPolicy with DirectionalF
 
 /// Base class for all sort orders for [OrderedTraversalPolicy] traversal.
 ///
-/// {@template flutter.widgets.focusorder.comparable}
+/// {@template flutter.widgets.FocusOrder.comparable}
 /// Only orders of the same type are comparable. If a set of widgets in the same
 /// [FocusTraversalGroup] contains orders that are not comparable with each
 /// other, it will assert, since the ordering between such keys is undefined. To
@@ -1173,7 +1173,7 @@ abstract class FocusOrder with Diagnosticable implements Comparable<FocusOrder> 
 /// to a widget subtree that is using a [OrderedTraversalPolicy] to define the
 /// order in which widgets should be traversed with the keyboard.
 ///
-/// {@macro flutter.widgets.focusorder.comparable}
+/// {@macro flutter.widgets.FocusOrder.comparable}
 ///
 /// See also:
 ///
@@ -1211,7 +1211,7 @@ class NumericFocusOrder extends FocusOrder {
 /// This sorts strings using Dart's default string comparison, which is not
 /// locale specific.
 ///
-/// {@macro flutter.widgets.focusorder.comparable}
+/// {@macro flutter.widgets.FocusOrder.comparable}
 ///
 /// See also:
 ///
@@ -1254,9 +1254,9 @@ class _OrderedFocusInfo {
 /// A [FocusTraversalPolicy] that orders nodes by an explicit order that resides
 /// in the nearest [FocusTraversalOrder] widget ancestor.
 ///
-/// {@macro flutter.widgets.focusorder.comparable}
+/// {@macro flutter.widgets.FocusOrder.comparable}
 ///
-/// {@tool dartpad --template=stateless_widget_scaffold_center}
+/// {@tool dartpad --template=stateless_widget_scaffold_center_no_null_safety}
 /// This sample shows how to assign a traversal order to a widget. In the
 /// example, the focus order goes from bottom right (the "One" button) to top
 /// left (the "Six" button).
@@ -1387,7 +1387,7 @@ class OrderedTraversalPolicy extends FocusTraversalPolicy with DirectionalFocusT
 /// An inherited widget that describes the order in which its child subtree
 /// should be traversed.
 ///
-/// {@macro flutter.widgets.focusorder.comparable}
+/// {@macro flutter.widgets.FocusOrder.comparable}
 ///
 /// The order for a widget is determined by the [FocusOrder] returned by
 /// [FocusTraversalOrder.of] for a particular context.
@@ -1466,7 +1466,7 @@ class FocusTraversalOrder extends InheritedWidget {
 /// To prevent the members of the group from being focused, set the
 /// [descendantsAreFocusable] attribute to false.
 ///
-/// {@tool dartpad --template=stateless_widget_material}
+/// {@tool dartpad --template=stateless_widget_material_no_null_safety}
 /// This sample shows three rows of buttons, each grouped by a
 /// [FocusTraversalGroup], each with different traversal order policies. Use tab
 /// traversal to see the order they are traversed in.  The first row follows a
@@ -1679,7 +1679,7 @@ class FocusTraversalGroup extends StatefulWidget {
 
   /// The child widget of this [FocusTraversalGroup].
   ///
-  /// {@macro flutter.widgets.child}
+  /// {@macro flutter.widgets.ProxyWidget.child}
   final Widget child;
 
   /// Returns the focus policy set by the [FocusTraversalGroup] that most

@@ -9,6 +9,7 @@ import 'theme.dart';
 import 'theme_data.dart';
 
 // Examples can assume:
+// // @dart = 2.9
 // String userAvatarUrl;
 
 /// A circle that represents a user.
@@ -174,7 +175,7 @@ class CircleAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     assert(debugCheckHasMediaQuery(context));
-    final ThemeData theme = Theme.of(context)!;
+    final ThemeData theme = Theme.of(context);
     TextStyle textStyle = theme.primaryTextTheme.subtitle1!.copyWith(color: foregroundColor);
     Color? effectiveBackgroundColor = backgroundColor;
     if (effectiveBackgroundColor == null) {

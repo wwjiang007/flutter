@@ -18,6 +18,7 @@ import 'slider_theme.dart';
 import 'theme.dart';
 
 // Examples can assume:
+// // @dart = 2.9
 // RangeValues _rangeValues = RangeValues(0.3, 0.7);
 // RangeValues _dollarsRange = RangeValues(50, 100);
 // void setState(VoidCallback fn) { }
@@ -33,7 +34,7 @@ typedef PaintRangeValueIndicator = void Function(PaintingContext context, Offset
 ///
 /// {@youtube 560 315 https://www.youtube.com/watch?v=ufb4gIPDmEs}
 ///
-/// {@tool dartpad --template=stateful_widget_scaffold}
+/// {@tool dartpad --template=stateful_widget_scaffold_no_null_safety}
 ///
 /// ![A range slider widget, consisting of 5 divisions and showing the default
 /// value indicator.](https://flutter.github.io/assets-for-api-docs/assets/material/range_slider.png)
@@ -575,7 +576,7 @@ class _RangeSliderState extends State<RangeSlider> with TickerProviderStateMixin
     assert(debugCheckHasMaterial(context));
     assert(debugCheckHasMediaQuery(context));
 
-    final ThemeData theme = Theme.of(context)!;
+    final ThemeData theme = Theme.of(context);
     SliderThemeData sliderTheme = SliderTheme.of(context);
 
     // If the widget has active or inactive colors specified, then we plug them
@@ -722,7 +723,7 @@ class _RangeSliderRenderObjectWidget extends LeafRenderObjectWidget {
       state: state,
       textDirection: Directionality.of(context),
       semanticFormatterCallback: semanticFormatterCallback,
-      platform: Theme.of(context)!.platform,
+      platform: Theme.of(context).platform,
     );
   }
 
@@ -743,7 +744,7 @@ class _RangeSliderRenderObjectWidget extends LeafRenderObjectWidget {
       ..onChangeEnd = onChangeEnd
       ..textDirection = Directionality.of(context)
       ..semanticFormatterCallback = semanticFormatterCallback
-      ..platform = Theme.of(context)!.platform;
+      ..platform = Theme.of(context).platform;
   }
 }
 
@@ -1265,8 +1266,8 @@ class _RenderRangeSlider extends RenderBox with RelayoutWhenSystemFontsChangeMix
   bool get sizedByParent => true;
 
   @override
-  void performResize() {
-    size = Size(
+  Size computeDryLayout(BoxConstraints constraints) {
+    return Size(
       constraints.hasBoundedWidth ? constraints.maxWidth : _minPreferredTrackWidth + _maxSliderPartWidth,
       constraints.hasBoundedHeight ? constraints.maxHeight : math.max(_minPreferredTrackHeight!, _maxSliderPartHeight),
     );
@@ -1718,5 +1719,10 @@ class _RenderValueIndicator extends RenderBox with RelayoutWhenSystemFontsChange
     if (_state.paintTopValueIndicator != null) {
       _state.paintTopValueIndicator!(context, offset);
     }
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) {
+    return constraints.smallest;
   }
 }

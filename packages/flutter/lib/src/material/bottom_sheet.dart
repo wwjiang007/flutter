@@ -149,7 +149,7 @@ class BottomSheet extends StatefulWidget {
   /// Defaults to null and falls back to [Material]'s default.
   final ShapeBorder? shape;
 
-  /// {@macro flutter.widgets.Clip}
+  /// {@macro flutter.material.Material.clipBehavior}
   ///
   /// Defines the bottom sheet's [Material.clipBehavior].
   ///
@@ -248,7 +248,7 @@ class _BottomSheetState extends State<BottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final BottomSheetThemeData bottomSheetTheme = Theme.of(context)!.bottomSheetTheme;
+    final BottomSheetThemeData bottomSheetTheme = Theme.of(context).bottomSheetTheme;
     final Color? color = widget.backgroundColor ?? bottomSheetTheme.backgroundColor;
     final double elevation = widget.elevation ?? bottomSheetTheme.elevation ?? 0;
     final ShapeBorder? shape = widget.shape ?? bottomSheetTheme.shape;
@@ -340,7 +340,7 @@ class _ModalBottomSheetState<T> extends State<_ModalBottomSheet<T>> {
   ParametricCurve<double> animationCurve = _modalBottomSheetCurve;
 
   String _getRouteLabel(MaterialLocalizations localizations) {
-    switch (Theme.of(context)!.platform) {
+    switch (Theme.of(context).platform) {
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
         return '';
@@ -477,7 +477,7 @@ class _ModalBottomSheetRoute<T> extends PopupRoute<T> {
       removeTop: true,
       child: Builder(
         builder: (BuildContext context) {
-          final BottomSheetThemeData sheetTheme = Theme.of(context)!.bottomSheetTheme;
+          final BottomSheetThemeData sheetTheme = Theme.of(context).bottomSheetTheme;
           return _ModalBottomSheet<T>(
             route: this,
             backgroundColor: backgroundColor ?? sheetTheme.modalBackgroundColor ?? sheetTheme.backgroundColor,
@@ -596,7 +596,7 @@ class _BottomSheetSuspendedCurve extends ParametricCurve<double> {
 /// Returns a `Future` that resolves to the value (if any) that was passed to
 /// [Navigator.pop] when the modal bottom sheet was closed.
 ///
-/// {@tool dartpad --template=stateless_widget_scaffold}
+/// {@tool dartpad --template=stateless_widget_scaffold_no_null_safety}
 ///
 /// This example demonstrates how to use `showModalBottomSheet` to display a
 /// bottom sheet that obscures the content behind it when a user taps a button.
@@ -669,7 +669,7 @@ Future<T?> showModalBottomSheet<T>({
   assert(debugCheckHasMediaQuery(context));
   assert(debugCheckHasMaterialLocalizations(context));
 
-  final NavigatorState navigator = Navigator.of(context, rootNavigator: useRootNavigator)!;
+  final NavigatorState navigator = Navigator.of(context, rootNavigator: useRootNavigator);
   return navigator.push(_ModalBottomSheetRoute<T>(
     builder: builder,
     capturedThemes: InheritedTheme.capture(from: context, to: navigator.context),

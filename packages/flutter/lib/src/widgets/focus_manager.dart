@@ -222,7 +222,7 @@ enum UnfocusDisposition {
 /// To see the focus tree in the debug console, call [debugDumpFocusTree]. To
 /// get the focus tree as a string, call [debugDescribeFocusTree].
 ///
-/// {@template flutter.widgets.focus_manager.focus.lifecycle}
+/// {@template flutter.widgets.FocusNode.lifecycle}
 /// ## Lifecycle
 ///
 /// There are several actors involved in the lifecycle of a
@@ -265,7 +265,7 @@ enum UnfocusDisposition {
 /// call [dispose] when the node is done being used.
 /// {@endtemplate}
 ///
-/// {@template flutter.widgets.focus_manager.focus.keyEvents}
+/// {@template flutter.widgets.FocusNode.keyEvents}
 /// ## Key Event Propagation
 ///
 /// The [FocusManager] receives key events from [RawKeyboard] and will pass them
@@ -303,7 +303,7 @@ enum UnfocusDisposition {
 /// [DirectionalFocusTraversalPolicyMixin], but custom policies can be built
 /// based upon these policies. See [FocusTraversalPolicy] for more information.
 ///
-/// {@tool dartpad --template=stateless_widget_scaffold} This example shows how
+/// {@tool dartpad --template=stateless_widget_scaffold_no_null_safety} This example shows how
 /// a FocusNode should be managed if not using the [Focus] or [FocusScope]
 /// widgets. See the [Focus] widget for a similar example using [Focus] and
 /// [FocusScope] widgets.
@@ -572,7 +572,7 @@ class FocusNode with DiagnosticableTreeMixin, ChangeNotifier {
   /// Called if this focus node receives a key event while focused (i.e. when
   /// [hasFocus] returns true).
   ///
-  /// {@macro flutter.widgets.focus_manager.focus.keyEvents}
+  /// {@macro flutter.widgets.FocusNode.keyEvents}
   FocusOnKeyCallback? get onKey => _onKey;
   FocusOnKeyCallback? _onKey;
 
@@ -786,7 +786,7 @@ class FocusNode with DiagnosticableTreeMixin, ChangeNotifier {
   /// previous node in the enclosing [FocusTraversalGroup], call [nextFocus] or
   /// [previousFocus] instead of calling `unfocus`.
   ///
-  /// {@tool dartpad --template=stateful_widget_material}
+  /// {@tool dartpad --template=stateful_widget_material_no_null_safety}
   /// This example shows the difference between the different [UnfocusDisposition]
   /// values for [unfocus].
   ///
@@ -1205,8 +1205,8 @@ class FocusNode with DiagnosticableTreeMixin, ChangeNotifier {
 /// as the [focusedChild] of this node, adopting if it isn't already part of the
 /// focus tree.
 ///
-/// {@macro flutter.widgets.focus_manager.focus.lifecycle}
-/// {@macro flutter.widgets.focus_manager.focus.keyEvents}
+/// {@macro flutter.widgets.FocusNode.lifecycle}
+/// {@macro flutter.widgets.FocusNode.keyEvents}
 ///
 /// See also:
 ///
