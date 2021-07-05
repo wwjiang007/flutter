@@ -21,16 +21,16 @@ String testOutputsDirectory =
 
 /// The callback type to handle [Response.data] after the test
 /// succeeds.
-typedef ResponseDataCallback = FutureOr<void> Function(Map<String, dynamic>);
+typedef ResponseDataCallback = FutureOr<void> Function(Map<String, dynamic>?);
 
-/// Writes a json-serializable json data to to
+/// Writes a json-serializable data to
 /// [testOutputsDirectory]/`testOutputFilename.json`.
 ///
 /// This is the default `responseDataCallback` in [integrationDriver].
 Future<void> writeResponseData(
-  Map<String, dynamic> data, {
+  Map<String, dynamic>? data, {
   String testOutputFilename = 'integration_response_data',
-  String destinationDirectory,
+  String? destinationDirectory,
 }) async {
   assert(testOutputFilename != null);
   destinationDirectory ??= testOutputsDirectory;
@@ -64,8 +64,8 @@ Future<void> writeResponseData(
 ///
 /// ```
 Future<void> integrationDriver({
-  Duration timeout = const Duration(minutes: 1),
-  ResponseDataCallback responseDataCallback = writeResponseData,
+  Duration timeout = const Duration(minutes: 20),
+  ResponseDataCallback? responseDataCallback = writeResponseData,
 }) async {
   final FlutterDriver driver = await FlutterDriver.connect();
   final String jsonResult = await driver.requestData(null, timeout: timeout);
@@ -86,6 +86,6 @@ Future<void> integrationDriver({
 
 const JsonEncoder _prettyEncoder = JsonEncoder.withIndent('  ');
 
-String _encodeJson(Map<String, dynamic> jsonObject, bool pretty) {
+String _encodeJson(Map<String, dynamic>? jsonObject, bool pretty) {
   return pretty ? _prettyEncoder.convert(jsonObject) : json.encode(jsonObject);
 }

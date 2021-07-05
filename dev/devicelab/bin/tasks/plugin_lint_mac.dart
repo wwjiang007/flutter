@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:io';
 
 import 'package:flutter_devicelab/framework/framework.dart';
@@ -16,6 +18,46 @@ Future<void> main() async {
 
     final Directory tempDir = Directory.systemTemp.createTempSync('flutter_plugin_test.');
     try {
+      section('Lint integration_test');
+
+      await inDirectory(tempDir, () async {
+        // Relative to this script.
+        final String flutterRoot = path.dirname(path.dirname(path.dirname(path.dirname(path.dirname(path.fromUri(Platform.script))))));
+        print('Flutter root at $flutterRoot');
+        final String integrationTestPackage = path.join(flutterRoot, 'packages', 'integration_test');
+        final String iosintegrationTestPodspec = path.join(integrationTestPackage, 'ios', 'integration_test.podspec');
+
+        await exec(
+          'pod',
+          <String>[
+            'lib',
+            'lint',
+            iosintegrationTestPodspec,
+            '--configuration=Debug', // Release targets unsupported arm64 simulators. Use Debug to only build against targeted x86_64 simulator devices.
+            '--use-libraries',
+            '--verbose',
+          ],
+          environment: <String, String>{
+            'LANG': 'en_US.UTF-8',
+          },
+        );
+
+        final String macosintegrationTestPodspec = path.join(integrationTestPackage, 'integration_test_macos', 'macos', 'integration_test_macos.podspec');
+        await exec(
+          'pod',
+          <String>[
+            'lib',
+            'lint',
+            macosintegrationTestPodspec,
+            '--configuration=Debug', // Release targets unsupported arm64 Apple Silicon. Use Debug to only build against targeted x86_64 macOS.
+            '--verbose',
+          ],
+          environment: <String, String>{
+            'LANG': 'en_US.UTF-8',
+          },
+        );
+      });
+
       section('Create Objective-C plugin');
 
       const String objcPluginName = 'test_plugin_objc';
@@ -44,14 +86,13 @@ Future<void> main() async {
             'lib',
             'lint',
             objcPodspecPath,
+            '--configuration=Debug', // Release targets unsupported arm64 simulators. Use Debug to only build against targeted x86_64 simulator devices.
             '--allow-warnings',
             '--verbose',
           ],
           environment: <String, String>{
             'LANG': 'en_US.UTF-8',
           },
-          // TODO(jmagman): Flutter cannot build against ARM simulators https://github.com/flutter/flutter/issues/64502
-          canFail: true,
         );
       });
 
@@ -64,6 +105,7 @@ Future<void> main() async {
             'lib',
             'lint',
             objcPodspecPath,
+            '--configuration=Debug', // Release targets unsupported arm64 simulators. Use Debug to only build against targeted x86_64 simulator devices.
             '--allow-warnings',
             '--use-libraries',
             '--verbose',
@@ -71,8 +113,6 @@ Future<void> main() async {
           environment: <String, String>{
             'LANG': 'en_US.UTF-8',
           },
-          // TODO(jmagman): Flutter cannot build against ARM simulators https://github.com/flutter/flutter/issues/64502
-          canFail: true,
         );
       });
 
@@ -103,6 +143,7 @@ Future<void> main() async {
           <String>[
             'lib',
             'lint',
+            '--configuration=Debug', // Release targets unsupported arm64 simulators. Use Debug to only build against targeted x86_64 simulator devices.
             swiftPodspecPath,
             '--allow-warnings',
             '--verbose',
@@ -110,8 +151,6 @@ Future<void> main() async {
           environment: <String, String>{
             'LANG': 'en_US.UTF-8',
           },
-          // TODO(jmagman): Flutter cannot build against ARM simulators https://github.com/flutter/flutter/issues/64502
-          canFail: true,
         );
       });
 
@@ -124,6 +163,7 @@ Future<void> main() async {
             'lib',
             'lint',
             swiftPodspecPath,
+            '--configuration=Debug', // Release targets unsupported arm64 simulators. Use Debug to only build against targeted x86_64 simulator devices.
             '--allow-warnings',
             '--use-libraries',
             '--verbose',
@@ -131,8 +171,6 @@ Future<void> main() async {
           environment: <String, String>{
             'LANG': 'en_US.UTF-8',
           },
-          // TODO(jmagman): Flutter cannot build against ARM simulators https://github.com/flutter/flutter/issues/64502
-          canFail: true,
         );
       });
 
@@ -228,7 +266,7 @@ Future<void> main() async {
 
       section('Build Objective-C application with Swift and Objective-C plugins as frameworks');
 
-      objcPodfileContent = 'use_frameworks!\n' + objcPodfileContent;
+      objcPodfileContent = 'use_frameworks!\n$objcPodfileContent';
       objcPodfile.writeAsStringSync(objcPodfileContent, flush: true);
 
       await inDirectory(objcAppPath, () async {
@@ -368,6 +406,7 @@ Future<void> main() async {
           // test_plugin_objc no longer supports iOS, shouldn't be present.
         || podfileLockOutput.contains(':path: ".symlinks/plugins/test_plugin_objc/ios"')
         || !podfileLockOutput.contains(':path: ".symlinks/plugins/test_plugin_swift/ios"')) {
+        print(podfileLockOutput);
         return TaskResult.failure('Podfile.lock does not contain expected pods');
       }
 
@@ -415,7 +454,8 @@ void _validateIosPodfile(String appPath) {
     || !podfileLockOutput.contains(':path: ".symlinks/plugins/test_plugin_objc/ios"')
     || !podfileLockOutput.contains(':path: ".symlinks/plugins/test_plugin_swift/ios"')
     || podfileLockOutput.contains('url_launcher_macos')) {
-    throw TaskResult.failure('Podfile.lock does not contain expected pods');
+    print(podfileLockOutput);
+    throw TaskResult.failure('iOS Podfile.lock does not contain expected pods');
   }
 
   checkDirectoryNotExists(path.join(
@@ -445,6 +485,11 @@ void _validateIosPodfile(String appPath) {
     'ios',
   ));
 
+  checkDirectoryNotExists(path.join(
+    pluginSymlinks,
+    'url_launcher_macos',
+  ));
+
   checkDirectoryExists(path.join(
     pluginSymlinks,
     'test_plugin_objc',
@@ -463,11 +508,21 @@ void _validateMacOSPodfile(String appPath) {
 
   final File podfileLockFile = File(path.join(appPath, 'macos', 'Podfile.lock'));
   final String podfileLockOutput = podfileLockFile.readAsStringSync();
-  if (!podfileLockOutput.contains(':path: Flutter/ephemeral/.symlinks/flutter/darwin-x64-release')
+  if (!podfileLockOutput.contains(':path: Flutter/ephemeral\n')
       || !podfileLockOutput.contains(':path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos')
-      || !podfileLockOutput.contains(':path: Flutter/ephemeral/.symlinks/plugins/test_plugin_swift/macos')) {
-    throw TaskResult.failure('Podfile.lock does not contain expected pods');
+      || !podfileLockOutput.contains(':path: Flutter/ephemeral/.symlinks/plugins/test_plugin_swift/macos')
+      || podfileLockOutput.contains('url_launcher/')) {
+    print(podfileLockOutput);
+    throw TaskResult.failure('macOS Podfile.lock does not contain expected pods');
   }
+
+  checkFileExists(path.join(
+    appPath,
+    'macos',
+    'Flutter',
+    'ephemeral',
+    'FlutterMacOS.podspec',
+  ));
 
   final String pluginSymlinks = path.join(
     appPath,
@@ -482,6 +537,11 @@ void _validateMacOSPodfile(String appPath) {
     pluginSymlinks,
     'url_launcher_macos',
     'macos',
+  ));
+
+  checkDirectoryNotExists(path.join(
+    pluginSymlinks,
+    'url_launcher',
   ));
 
   checkDirectoryExists(path.join(

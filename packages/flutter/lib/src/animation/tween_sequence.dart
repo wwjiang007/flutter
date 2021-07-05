@@ -7,8 +7,7 @@ import 'animation.dart';
 import 'tween.dart';
 
 // Examples can assume:
-// // @dart = 2.9
-// AnimationController myAnimationController;
+// late AnimationController myAnimationController;
 
 /// Enables creating an [Animation] whose value is defined by a sequence of
 /// [Tween]s.
@@ -23,7 +22,7 @@ import 'tween.dart';
 /// for the next 20%, and then returns to 5.0 for the final 40%.
 ///
 /// ```dart
-/// final Animation<double> animation = TweenSequence(
+/// final Animation<double> animation = TweenSequence<double>(
 ///   <TweenSequenceItem<double>>[
 ///     TweenSequenceItem<double>(
 ///       tween: Tween<double>(begin: 5.0, end: 10.0)
